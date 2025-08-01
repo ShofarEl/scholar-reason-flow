@@ -45,9 +45,16 @@ export class AIService {
           files: await Promise.all(files.map(async f => {
             let content = '';
             try {
-              // Check if we can extract text from this file type
-              if (FileTextExtractor.isTextExtractable(f.type, f.name)) {
-                // Get the actual File object from the URL
+              // For Gemini model and PDFs, skip text extraction since we send the PDF directly
+              const isGeminiModel = model !== 'reason-core'; // Gemini is used for all models except reason-core
+              const isPDF = f.type === 'application/pdf';
+              
+              if (isGeminiModel && isPDF) {
+                // For Gemini + PDF, send the raw file directly - no text extraction needed
+                content = ''; // Empty content since PDF will be processed directly by AI
+                console.log(`Sending PDF ${f.name} directly to Gemini for processing`);
+              } else if (FileTextExtractor.isTextExtractable(f.type, f.name)) {
+                // For all other cases, extract text content
                 const fileResponse = await fetch(f.url);
                 const blob = await fileResponse.blob();
                 const actualFile = new File([blob], f.name, { type: f.type });

@@ -115,6 +115,16 @@ Attached Files:\n`
             }
           })
           fileAnalysisText += `- Image: ${file.name} (${file.type})\n`
+        } else if (file.type === 'application/pdf' && file.preview) {
+          // Send PDF directly to Gemini for processing
+          const base64Data = file.preview.split(',')[1] || ''
+          parts.push({
+            inline_data: {
+              mime_type: file.type,
+              data: base64Data
+            }
+          })
+          fileAnalysisText += `- PDF Document: ${file.name} (will be processed directly by AI)\n`
         } else if (file.content) {
           fileAnalysisText += `\n--- File: ${file.name} (${file.type}) ---\n${file.content}\n--- End of ${file.name} ---\n\n`
         } else {
