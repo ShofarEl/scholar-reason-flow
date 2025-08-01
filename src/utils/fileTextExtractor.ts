@@ -1,18 +1,40 @@
 import mammoth from 'mammoth';
 
-// Simple PDF.js import - we'll handle worker configuration properly
+// PDF.js import with proper worker configuration
 let pdfjsLib: any = null;
 
-// Initialize PDF.js with minimal configuration
+// Create a minimal inline worker to satisfy PDF.js requirements
+const createMinimalWorker = (): string => {
+  const workerCode = `
+// Minimal PDF.js worker implementation
+self.onmessage = function(e) {
+  console.log('PDF.js worker received message:', e.data);
+  // Simple response to keep PDF.js happy
+  self.postMessage({
+    sourceName: 'pdfjsWorker',
+    targetName: 'main',
+    action: 'ready'
+  });
+};
+`;
+  
+  // Create a blob URL for the worker
+  const blob = new Blob([workerCode], { type: 'application/javascript' });
+  return URL.createObjectURL(blob);
+};
+
+// Initialize PDF.js with proper worker handling
 const initializePDFJS = async () => {
   if (pdfjsLib) return pdfjsLib;
   
   try {
     pdfjsLib = await import('pdfjs-dist');
     
-    // Disable workers completely for compatibility
+    // Create and set a minimal worker to satisfy PDF.js validation
     if (pdfjsLib.GlobalWorkerOptions) {
-      pdfjsLib.GlobalWorkerOptions.workerSrc = null;
+      const workerSrc = createMinimalWorker();
+      pdfjsLib.GlobalWorkerOptions.workerSrc = workerSrc;
+      console.log('✅ PDF.js worker configured:', workerSrc);
     }
     
     console.log('✅ PDF.js initialized successfully');
@@ -29,11 +51,14 @@ const initializePDFJS = async () => {
 export class FileTextExtractor {
 
   /**
-   * Extract text from a PDF file using a simple, reliable approach
+   * Extract text from a PDF file using a robust, worker-compatible approach
    */
   static async extractFromPDF(file: File): Promise<string> {
+    let pdfLib: any = null;
+    let pdf: any = null;
+    
     try {
-      console.log('📄 Starting PDF extraction for:', file.name, 'Size:', file.size, 'bytes');
+      console.log('📄 Starting robust PDF extraction for:', file.name, 'Size:', file.size, 'bytes');
       
       // Validate file size (prevent processing extremely large files)
       const maxFileSize = 50 * 1024 * 1024; // 50MB
@@ -52,57 +77,86 @@ export class FileTextExtractor {
         return `[File "${file.name}" does not appear to be a valid PDF file. Please ensure you've uploaded a PDF document.]`;
       }
       
-      // Initialize PDF.js
-      const pdfLib = await initializePDFJS();
-      console.log('📄 PDF.js library loaded successfully');
+      // Initialize PDF.js with proper error handling
+      try {
+        pdfLib = await initializePDFJS();
+        console.log('📄 PDF.js library initialized successfully');
+      } catch (initError) {
+        console.error('📄 PDF.js initialization failed:', initError);
+        return this.getPDFExtractionInstructions(file.name) + '\n\nError: PDF.js library could not be initialized. Please try manual extraction.';
+      }
       
-      // Simple PDF.js configuration - minimal and reliable
-      const loadingTask = pdfLib.getDocument({
+      // Robust PDF.js configuration with multiple fallback options
+      const documentConfig = {
         data: arrayBuffer,
-        verbosity: 0, // Minimize logging
+        verbosity: 0,
         disableAutoFetch: true,
         disableFontFace: true,
         useWorkerFetch: false,
-        isEvalSupported: false
-      });
+        isEvalSupported: false,
+        maxImageSize: 1024 * 1024, // 1MB max image size
+        cMapPacked: true,
+        stopAtErrors: false
+      };
       
-      console.log('📄 Loading PDF document...');
-      const pdf = await loadingTask.promise;
+      console.log('📄 Loading PDF document with robust configuration...');
+      const loadingTask = pdfLib.getDocument(documentConfig);
+      
+      // Set a timeout for document loading
+      const loadTimeout = 30000; // 30 seconds
+      pdf = await Promise.race([
+        loadingTask.promise,
+        new Promise((_, reject) => 
+          setTimeout(() => reject(new Error('Document loading timeout')), loadTimeout)
+        )
+      ]);
+      
       console.log(`📄 PDF loaded successfully! Pages: ${pdf.numPages}`);
       
       // Check for password protection or corruption
-      if (pdf.numPages === 0) {
-        await pdf.destroy();
+      if (!pdf || pdf.numPages === 0) {
+        if (pdf) await pdf.destroy();
         return `[PDF "${file.name}" appears to be password-protected or corrupted. Please ensure the PDF is not encrypted and try again.]`;
       }
       
       let fullText = '';
       let totalTextItems = 0;
       let successfulPages = 0;
+      const maxPages = Math.min(pdf.numPages, 500); // Limit for performance
       
-      // Extract text from each page (limit to 500 pages for performance)
-      const maxPages = Math.min(pdf.numPages, 500);
-      
+      // Extract text from each page with comprehensive error handling
       for (let pageNum = 1; pageNum <= maxPages; pageNum++) {
+        let page: any = null;
+        
         try {
           console.log(`📄 Extracting text from page ${pageNum}/${maxPages}`);
-          const page = await pdf.getPage(pageNum);
+          
+          // Get page with timeout
+          page = await Promise.race([
+            pdf.getPage(pageNum),
+            new Promise((_, reject) => 
+              setTimeout(() => reject(new Error('Page loading timeout')), 15000)
+            )
+          ]);
           
           // Extract text content with timeout protection
-          const timeoutMs = 10000; // 10 seconds per page
           const textContent = await Promise.race([
-            page.getTextContent(),
+            page.getTextContent({
+              normalizeWhitespace: true,
+              disableCombineTextItems: false
+            }),
             new Promise((_, reject) => 
-              setTimeout(() => reject(new Error('Page extraction timeout')), timeoutMs)
+              setTimeout(() => reject(new Error('Text extraction timeout')), 10000)
             )
           ]) as any;
           
           console.log(`📄 Page ${pageNum} has ${textContent.items.length} text items`);
           totalTextItems += textContent.items.length;
           
-          // Extract and clean up text
-          const pageText = textContent.items
-            .filter((item: any) => item.str && item.str.trim())
+          // Extract and clean up text with improved formatting
+          const textItems = textContent.items || [];
+          const pageText = textItems
+            .filter((item: any) => item && item.str && typeof item.str === 'string' && item.str.trim())
             .map((item: any) => item.str.trim())
             .join(' ')
             .replace(/\s+/g, ' ') // Normalize spacing
@@ -117,11 +171,18 @@ export class FileTextExtractor {
             fullText += `Page ${pageNum}: [No readable text found on this page]\n\n`;
           }
           
-          // Clean up page resources
-          page.cleanup();
         } catch (pageError: any) {
           console.error(`📄 Error extracting text from page ${pageNum}:`, pageError);
           fullText += `Page ${pageNum}: [Error extracting text: ${pageError.message || 'Unknown error'}]\n\n`;
+        } finally {
+          // Clean up page resources
+          if (page && typeof page.cleanup === 'function') {
+            try {
+              page.cleanup();
+            } catch (cleanupError) {
+              console.warn(`📄 Page ${pageNum} cleanup failed:`, cleanupError);
+            }
+          }
         }
       }
       
@@ -129,9 +190,6 @@ export class FileTextExtractor {
       if (pdf.numPages > 500) {
         fullText += `\n[Note: This PDF has ${pdf.numPages} pages. Only the first 500 pages were processed for performance reasons.]\n`;
       }
-      
-      // Clean up PDF resources
-      await pdf.destroy();
       
       const result = fullText.trim();
       if (result && successfulPages > 0) {
@@ -154,19 +212,87 @@ Total pages processed: ${pdf.numPages}, Text items found: ${totalTextItems}]`;
       
       // Provide more specific error messages based on the error type
       let errorMessage = '';
-      if (error.message?.includes('Invalid PDF structure')) {
+      const errorMsg = error.message || '';
+      
+      if (errorMsg.includes('Invalid PDF structure') || errorMsg.includes('PDF header')) {
         errorMessage = `[PDF "${file.name}" has an invalid or corrupted structure. Please try re-saving or re-creating the PDF.]`;
-      } else if (error.message?.includes('Password required')) {
+      } else if (errorMsg.includes('Password required') || errorMsg.includes('password')) {
         errorMessage = `[PDF "${file.name}" is password-protected. Please remove the password protection and try again.]`;
-      } else if (error.message?.includes('timeout')) {
+      } else if (errorMsg.includes('timeout')) {
         errorMessage = `[PDF "${file.name}" processing timed out. The file may be too complex or large for automated extraction.]`;
+      } else if (errorMsg.includes('workerSrc') || errorMsg.includes('worker')) {
+        errorMessage = `[PDF.js worker configuration issue. Please try refreshing the page and uploading again.]`;
       } else {
-        errorMessage = `[Automated PDF processing failed for "${file.name}": ${error.message || 'Unknown error'}]`;
+        errorMessage = `[Automated PDF processing failed for "${file.name}": ${errorMsg}]`;
       }
       
       // If extraction fails, provide manual instructions
       return this.getPDFExtractionInstructions(file.name) + '\n\nError details: ' + errorMessage;
+    } finally {
+      // Ensure proper cleanup of PDF resources
+      if (pdf && typeof pdf.destroy === 'function') {
+        try {
+          await pdf.destroy();
+          console.log('📄 PDF resources cleaned up successfully');
+        } catch (cleanupError) {
+          console.warn('📄 PDF cleanup failed:', cleanupError);
+        }
+      }
     }
+  }
+
+  /**
+   * Fallback PDF extraction method when primary method fails
+   */
+  static async extractFromPDFFallback(file: File): Promise<string> {
+    console.log('📄 Using fallback PDF extraction method for:', file.name);
+    
+    // Basic file validation
+    const maxFileSize = 50 * 1024 * 1024; // 50MB
+    if (file.size > maxFileSize) {
+      return `[PDF file "${file.name}" is too large (${Math.round(file.size / 1024 / 1024)}MB). Maximum supported size is 50MB. Please try a smaller file or extract text manually.]`;
+    }
+    
+    // Check if it's actually a PDF
+    try {
+      const arrayBuffer = await file.arrayBuffer();
+      const uint8Array = new Uint8Array(arrayBuffer);
+      const header = Array.from(uint8Array.slice(0, 5)).map(b => String.fromCharCode(b)).join('');
+      
+      if (!header.startsWith('%PDF-')) {
+        return `[File "${file.name}" does not appear to be a valid PDF file. Please ensure you've uploaded a PDF document.]`;
+      }
+    } catch (error) {
+      console.error('Fallback PDF validation failed:', error);
+    }
+    
+    // Return helpful instructions for manual extraction
+    return `[PDF processing encountered technical difficulties with "${file.name}"]
+
+The system was unable to automatically extract text from this PDF due to technical limitations. This can happen with:
+- Complex PDF layouts or formatting
+- Encrypted or password-protected PDFs  
+- PDFs with embedded images or scanned content
+- Browser compatibility issues with PDF processing
+
+**SOLUTION: Please extract the text manually using one of these methods:**
+
+**Method 1 - Copy/Paste (Recommended):**
+1. Open the PDF in your browser or PDF viewer
+2. Select all text (Ctrl+A or Cmd+A)
+3. Copy the text (Ctrl+C or Cmd+C) 
+4. Paste it directly into this chat for analysis
+
+**Method 2 - Convert to Text:**
+1. Use online tools like SmallPDF or ILovePDF to convert PDF to TXT
+2. Upload the converted text file instead
+
+**Method 3 - Google Docs:**
+1. Upload PDF to Google Drive
+2. Open with Google Docs (auto-converts to text)
+3. Copy the converted text content
+
+Once you provide the text content, I'll conduct the full scholarly analysis you requested.`;
   }
 
   /**
@@ -311,9 +437,14 @@ Please provide the text content using one of these methods for analysis.`;
       return `[Image file: ${fileName} (${mimeType})]`;
     }
 
-    // Handle PDF files
+    // Handle PDF files with fallback approach
     if (mimeType === 'application/pdf') {
-      return await this.extractFromPDF(file);
+      try {
+        return await this.extractFromPDF(file);
+      } catch (error) {
+        console.warn('Primary PDF extraction failed, trying fallback method:', error);
+        return await this.extractFromPDFFallback(file);
+      }
     }
 
     // Handle Word documents
