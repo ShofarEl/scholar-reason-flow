@@ -1,4 +1,4 @@
-import React, { useState, useRef, useCallback } from 'react';
+import React, { useState, useRef, useCallback, useEffect } from 'react';
 import { Send, Paperclip, Mic, MicOff } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
@@ -7,6 +7,7 @@ import { FileAttachment, AIModel } from '@/types/chat';
 import { FileUploadArea } from './FileUploadArea';
 import { ModelSelector } from './ModelSelector';
 import { detectQueryType, routeToOptimalModel, getQueryTypeDescription } from '@/utils/aiRouting';
+import { useToast } from '@/hooks/use-toast';
 
 interface ChatInputProps {
   onSendMessage: (content: string, files: FileAttachment[], selectedModel: AIModel) => void;
@@ -28,6 +29,18 @@ export const ChatInput: React.FC<ChatInputProps> = ({
   const [isListening, setIsListening] = useState(false);
   const [showFileUpload, setShowFileUpload] = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const recognitionRef = useRef<any>(null);
+  const { toast } = useToast();
+
+  // Cleanup speech recognition on unmount
+  useEffect(() => {
+    return () => {
+      if (recognitionRef.current) {
+        recognitionRef.current.stop();
+        recognitionRef.current = null;
+      }
+    };
+  }, []);
 
   // Auto-resize textarea
   const adjustTextareaHeight = useCallback(() => {
@@ -75,27 +88,146 @@ export const ChatInput: React.FC<ChatInputProps> = ({
   };
 
   const handleVoiceInput = () => {
-    if (!('webkitSpeechRecognition' in window)) {
-      alert('Voice input is not supported in your browser');
+    // Check for Speech Recognition API support (both standard and webkit)
+    const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+    
+    if (!SpeechRecognition) {
+      toast({
+        title: "Voice input not supported",
+        description: "Speech recognition is not available in your browser. Please try typing your message instead.",
+        variant: "destructive"
+      });
       return;
     }
 
-    const recognition = new (window as any).webkitSpeechRecognition();
-    recognition.continuous = false;
-    recognition.interimResults = false;
-    recognition.lang = 'en-US';
+    // If already listening, stop recognition
+    if (isListening) {
+      if (recognitionRef.current) {
+        recognitionRef.current.stop();
+      }
+      return;
+    }
 
-    recognition.onstart = () => setIsListening(true);
-    recognition.onend = () => setIsListening(false);
-    recognition.onerror = () => setIsListening(false);
+    try {
+      const recognition = new SpeechRecognition();
+      recognitionRef.current = recognition;
+      
+      // Enhanced configuration for mobile devices
+    recognition.continuous = false;
+      recognition.interimResults = true; // Enable interim results for better UX
+      recognition.maxAlternatives = 1;
+      
+      // Better language detection - try to use browser language or fallback
+      const userLang = navigator.language || navigator.languages?.[0] || 'en-US';
+      recognition.lang = userLang;
+
+      let finalTranscript = '';
+      let interimTranscript = '';
+
+      recognition.onstart = () => {
+        console.log('Speech recognition started');
+        setIsListening(true);
+        toast({
+          title: "Listening...",
+          description: "Speak now and we'll convert your speech to text.",
+          duration: 2000
+        });
+      };
+
+      recognition.onend = () => {
+        console.log('Speech recognition ended');
+        setIsListening(false);
+        recognitionRef.current = null;
+      };
+
+      recognition.onerror = (event: any) => {
+        console.error('Speech recognition error:', event.error);
+        setIsListening(false);
+        recognitionRef.current = null;
+        
+        // Handle specific error types with user-friendly messages
+        switch (event.error) {
+          case 'not-allowed':
+          case 'permission-denied':
+            toast({
+              title: "Microphone permission required",
+              description: "Please allow microphone access in your browser settings to use voice input.",
+              variant: "destructive"
+            });
+            break;
+          case 'no-speech':
+            toast({
+              title: "No speech detected",
+              description: "We couldn't hear anything. Please try speaking again or check your microphone.",
+              variant: "destructive"
+            });
+            break;
+          case 'audio-capture':
+            toast({
+              title: "Microphone not found",
+              description: "No microphone detected. Please connect a microphone and try again.",
+              variant: "destructive"
+            });
+            break;
+          case 'network':
+            toast({
+              title: "Network error",
+              description: "Speech recognition requires an internet connection. Please check your connection.",
+              variant: "destructive"
+            });
+            break;
+          case 'service-not-allowed':
+            toast({
+              title: "Service not available",
+              description: "Speech recognition service is not available. Please try again later.",
+              variant: "destructive"
+            });
+            break;
+          default:
+            toast({
+              title: "Voice input error",
+              description: "Something went wrong with voice recognition. Please try again.",
+              variant: "destructive"
+            });
+        }
+      };
     
     recognition.onresult = (event: any) => {
-      const transcript = event.results[0][0].transcript;
-      setMessage(prev => prev + (prev ? ' ' : '') + transcript);
+        interimTranscript = '';
+        
+        for (let i = event.resultIndex; i < event.results.length; i++) {
+          const transcript = event.results[i][0].transcript;
+          
+          if (event.results[i].isFinal) {
+            finalTranscript += transcript;
+          } else {
+            interimTranscript += transcript;
+          }
+        }
+        
+        // Update message with final transcript
+        if (finalTranscript) {
+          setMessage(prev => {
+            const newMessage = prev + (prev ? ' ' : '') + finalTranscript;
+            return newMessage;
+          });
       adjustTextareaHeight();
+          finalTranscript = '';
+        }
     };
 
+      // Start recognition
     recognition.start();
+      
+    } catch (error) {
+      console.error('Failed to start speech recognition:', error);
+      setIsListening(false);
+      toast({
+        title: "Voice input failed",
+        description: "Unable to start speech recognition. Please check your microphone and try again.",
+        variant: "destructive"
+      });
+    }
   };
 
   // Get routing suggestion for current input
@@ -113,7 +245,7 @@ export const ChatInput: React.FC<ChatInputProps> = ({
   const maxChars = 4000;
 
   return (
-    <div className="space-y-2 p-2 md:p-4 border-t bg-background/95 backdrop-blur-sm">
+    <div className="space-y-2 p-2 md:p-4 border-t bg-background/95 backdrop-blur-sm md:relative fixed bottom-0 left-0 right-0 z-30 md:z-auto md:border-t-border border-t-border/60">
       {/* File Upload Area */}
       {showFileUpload && (
         <FileUploadArea
@@ -188,9 +320,10 @@ export const ChatInput: React.FC<ChatInputProps> = ({
               onClick={handleVoiceInput}
               disabled={disabled}
               className={cn(
-                "h-8 w-8 p-0 hover:bg-muted/50",
-                isListening && "bg-destructive/10 text-destructive"
+                "h-8 w-8 p-0 hover:bg-muted/50 transition-all duration-200",
+                isListening && "bg-red-100 text-red-600 animate-pulse border-2 border-red-300 dark:bg-red-950 dark:text-red-400 dark:border-red-800"
               )}
+              title={isListening ? "Listening... (tap to stop)" : "Start voice input"}
             >
               {isListening ? (
                 <MicOff className="h-3.5 w-3.5" />

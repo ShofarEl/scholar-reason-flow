@@ -400,11 +400,11 @@ export const ScribeAI: React.FC = () => {
   }
 
   return (
-    <div className="flex h-screen w-full bg-background">
+    <div className="flex h-screen w-full bg-background overflow-hidden">
       {/* Mobile Overlay */}
       {isMobile && showSidebar && (
         <div 
-          className="fixed inset-0 bg-black/50 z-40"
+          className="fixed inset-0 bg-black/50 z-45"
           onClick={() => setShowSidebar(false)}
         />
       )}
@@ -431,9 +431,9 @@ export const ScribeAI: React.FC = () => {
       </div>
 
       {/* Main Chat Area */}
-      <div className="flex-1 flex flex-col min-w-0">
+      <div className="flex-1 flex flex-col min-w-0 relative">
         {/* Header */}
-        <div className="flex items-center justify-between p-4 border-b bg-card/50 backdrop-blur-sm">
+        <div className="flex items-center justify-between p-4 border-b bg-card/50 backdrop-blur-sm md:relative fixed top-0 left-0 right-0 z-40 md:z-auto md:border-b-border border-b-border/60">
           <div className="flex items-center space-x-3">
             {(!showSidebar || isMobile) && (
               <Button
@@ -503,10 +503,10 @@ export const ScribeAI: React.FC = () => {
         </div>
 
         {/* Messages Area */}
-        <ScrollArea ref={scrollAreaRef} className="flex-1 px-2 md:px-4">
+        <ScrollArea ref={scrollAreaRef} className="flex-1 px-2 md:px-4 pt-20 pb-32 md:pt-0 md:pb-0">
           <div className="max-w-4xl mx-auto space-y-4 py-4">
             {conversation.messages.length === 0 ? (
-              <div className="text-center py-12">
+              <div className="text-center py-8 md:py-12">
                 <Logo size="lg" className="mx-auto mb-4" />
                 <h3 className="text-lg font-semibold mb-2">Welcome to ScribeAI</h3>
                 <p className="text-muted-foreground max-w-lg mx-auto mb-4">

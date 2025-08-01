@@ -122,8 +122,8 @@ export const MarkdownRenderer: React.FC<MarkdownRendererProps> = React.memo(({
         isUser 
           ? 'prose-invert prose-headings:text-white prose-p:text-white prose-strong:text-white prose-em:text-white prose-code:text-white prose-pre:bg-white/10 prose-pre:text-white' 
           : theme === 'dark' 
-            ? 'prose-invert prose-headings:text-foreground prose-p:text-foreground prose-strong:text-foreground prose-em:text-foreground prose-code:text-foreground prose-a:text-primary' 
-            : 'prose-gray prose-headings:text-foreground prose-p:text-foreground prose-strong:text-foreground prose-em:text-foreground prose-code:text-foreground'
+            ? 'dark:prose-invert prose-headings:text-foreground prose-p:text-foreground prose-strong:text-foreground prose-em:text-foreground prose-code:text-foreground prose-a:text-primary prose-blockquote:text-foreground' 
+            : 'prose-gray prose-headings:text-foreground prose-p:text-foreground prose-strong:text-foreground prose-em:text-foreground prose-code:text-foreground prose-blockquote:text-foreground'
       }`}
     >
       <ReactMarkdown
@@ -259,67 +259,87 @@ export const MarkdownRenderer: React.FC<MarkdownRendererProps> = React.memo(({
           blockquote: ({ children }) => (
             <blockquote className={`border-l-4 pl-6 py-4 my-6 rounded-r-lg italic ${
               isUser 
-                ? 'border-white/30 bg-white/10' 
-                : 'border-primary/30 bg-muted/20'
+                ? 'border-white/30 bg-white/10 text-white/90' 
+                : 'border-primary/30 bg-muted/20 text-foreground'
             }`}>
-              <div className="text-muted-foreground">
-                {children}
-              </div>
+              {children}
             </blockquote>
           ),
 
           // Custom heading renderers with proper styling
           h1: ({ children }) => (
-            <h1 className="text-3xl font-bold my-6 text-foreground border-b border-border pb-2">
+            <h1 className={`text-3xl font-bold my-6 pb-2 border-b ${
+              isUser 
+                ? 'text-white border-white/20' 
+                : 'text-foreground border-border'
+            }`}>
               {children}
             </h1>
           ),
           h2: ({ children }) => (
-            <h2 className="text-2xl font-bold my-5 text-foreground">
+            <h2 className={`text-2xl font-bold my-5 ${
+              isUser ? 'text-white' : 'text-foreground'
+            }`}>
               {children}
             </h2>
           ),
           h3: ({ children }) => (
-            <h3 className="text-xl font-bold my-4 text-foreground">
+            <h3 className={`text-xl font-bold my-4 ${
+              isUser ? 'text-white' : 'text-foreground'
+            }`}>
               {children}
             </h3>
           ),
           h4: ({ children }) => (
-            <h4 className="text-lg font-semibold my-3 text-foreground">
+            <h4 className={`text-lg font-semibold my-3 ${
+              isUser ? 'text-white' : 'text-foreground'
+            }`}>
               {children}
             </h4>
           ),
           h5: ({ children }) => (
-            <h5 className="text-base font-semibold my-3 text-foreground">
+            <h5 className={`text-base font-semibold my-3 ${
+              isUser ? 'text-white' : 'text-foreground'
+            }`}>
               {children}
             </h5>
           ),
           h6: ({ children }) => (
-            <h6 className="text-sm font-semibold my-2 text-muted-foreground">
+            <h6 className={`text-sm font-semibold my-2 ${
+              isUser ? 'text-white/80' : 'text-muted-foreground'
+            }`}>
               {children}
             </h6>
           ),
 
           // Custom paragraph renderer
           p: ({ children }) => (
-            <p className="my-4 leading-relaxed text-foreground">
+            <p className={`my-4 leading-relaxed ${
+              isUser ? 'text-white' : 'text-foreground'
+            }`}>
               {children}
             </p>
           ),
 
           // Custom list renderers
           ul: ({ children }) => (
-            <ul className="list-disc ml-6 my-4 space-y-2 text-foreground">
+            <ul className={`list-disc ml-6 my-4 space-y-2 ${
+              isUser ? 'text-white' : 'text-foreground'
+            }`}>
               {children}
             </ul>
           ),
           ol: ({ children }) => (
-            <ol className="list-decimal ml-6 my-4 space-y-2 text-foreground">
+            <ol className={`list-decimal ml-6 my-4 space-y-2 ${
+              isUser ? 'text-white' : 'text-foreground'
+            }`}>
               {children}
             </ol>
           ),
           li: ({ children }) => (
-            <li className="leading-relaxed">
+            <li className={`leading-relaxed ${
+              isUser ? 'text-white' : 'text-foreground'
+            }`}>
               {children}
             </li>
           ),
@@ -406,8 +426,7 @@ export const MarkdownRenderer: React.FC<MarkdownRendererProps> = React.memo(({
                         className={`${className} text-lg leading-relaxed`} 
                         style={{ 
                           fontSize: '1.1em',
-                          lineHeight: '1.6',
-                          color: isUser ? 'white' : 'inherit'
+                          lineHeight: '1.6'
                         }}
                         {...props}
                       >
@@ -470,13 +489,19 @@ export const MarkdownRenderer: React.FC<MarkdownRendererProps> = React.memo(({
 
           // Enhanced emphasis and strong styling
           em: ({ children }) => (
-            <em className="font-medium text-foreground bg-accent/10 px-1 rounded">
+            <em className={`font-medium px-1 rounded ${
+              isUser 
+                ? 'text-white/90 bg-white/10' 
+                : 'text-foreground bg-accent/10'
+            }`}>
               {children}
             </em>
           ),
 
           strong: ({ children }) => (
-            <strong className="font-bold text-foreground">
+            <strong className={`font-bold ${
+              isUser ? 'text-white' : 'text-foreground'
+            }`}>
               {children}
             </strong>
           ),
@@ -489,13 +514,19 @@ export const MarkdownRenderer: React.FC<MarkdownRendererProps> = React.memo(({
           ),
 
           dt: ({ children }) => (
-            <dt className="font-semibold text-foreground mb-1">
+            <dt className={`font-semibold mb-1 ${
+              isUser ? 'text-white' : 'text-foreground'
+            }`}>
               {children}
             </dt>
           ),
 
           dd: ({ children }) => (
-            <dd className="ml-4 text-muted-foreground mb-2 pl-4 border-l-2 border-accent/30">
+            <dd className={`ml-4 mb-2 pl-4 border-l-2 ${
+              isUser 
+                ? 'text-white/80 border-white/30' 
+                : 'text-muted-foreground border-accent/30'
+            }`}>
               {children}
             </dd>
           ),
