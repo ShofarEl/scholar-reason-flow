@@ -38,8 +38,17 @@ const extractPDFTextSimple = async (arrayBuffer: ArrayBuffer): Promise<string> =
             .replace(/\\t/g, '\t')
             .replace(/\\\\/g, '\\')
             .replace(/\\"/g, '"')
-            .replace(/\\'/g, "'");
-          if (cleanText.length > 2 && /[a-zA-Z]/.test(cleanText)) {
+            .replace(/\\'/g, "'")
+            .replace(/\\050/g, '(')
+            .replace(/\\051/g, ')')
+            .replace(/\\([0-9]{3})/g, (match, octal) => String.fromCharCode(parseInt(octal, 8)));
+          
+          // Better content filtering
+          if (cleanText.length > 5 && 
+              /[a-zA-Z]/.test(cleanText) &&
+              !cleanText.match(/^[A-Z0-9_\-\/]+$/) && // Skip constants
+              !cleanText.includes('obj') &&
+              !cleanText.includes('endobj')) {
             contentLines.push(cleanText.trim());
           }
         }
@@ -53,6 +62,7 @@ const extractPDFTextSimple = async (arrayBuffer: ArrayBuffer): Promise<string> =
     const arrayContent = match[1];
     const textParts = arrayContent.match(/\((.*?)\)/g);
     if (textParts) {
+      const lineText = [];
       textParts.forEach(part => {
         const extracted = part.match(/\((.*?)\)/);
         if (extracted && extracted[1]) {
@@ -61,29 +71,21 @@ const extractPDFTextSimple = async (arrayBuffer: ArrayBuffer): Promise<string> =
             .replace(/\\r/g, '\r')
             .replace(/\\t/g, '\t')
             .replace(/\\\\/g, '\\')
-            .trim();
-          if (cleanText.length > 2 && /[a-zA-Z]/.test(cleanText)) {
-            contentLines.push(cleanText);
+            .replace(/\\050/g, '(')
+            .replace(/\\051/g, ')')
+            .replace(/\\([0-9]{3})/g, (match, octal) => String.fromCharCode(parseInt(octal, 8)));
+          
+          if (cleanText.trim() && !cleanText.match(/^[0-9\s\-\.]+$/)) {
+            lineText.push(cleanText);
           }
         }
       });
-    }
-  }
-  
-  // Method 3: Look for simple text patterns in parentheses (common in PDFs)
-  const simpleTextPattern = /\(([^)]{3,})\)/g;
-  while ((match = simpleTextPattern.exec(text)) !== null) {
-    const extracted = match[1];
-    if (extracted && /[a-zA-Z]/.test(extracted) && extracted.length > 2) {
-      // Filter out obvious metadata
-      if (!extracted.includes('Adobe') && 
-          !extracted.includes('Illustrator') && 
-          !extracted.includes('RGB') && 
-          !extracted.includes('CMYK') &&
-          !extracted.includes('.jpeg') &&
-          !extracted.includes('xmp') &&
-          !extracted.match(/^[A-Z0-9_-]+$/)) {
-        contentLines.push(extracted.trim());
+      
+      if (lineText.length > 0) {
+        const fullLine = lineText.join('').trim();
+        if (fullLine.length > 5 && /[a-zA-Z]/.test(fullLine)) {
+          contentLines.push(fullLine);
+        }
       }
     }
   }
@@ -91,16 +93,26 @@ const extractPDFTextSimple = async (arrayBuffer: ArrayBuffer): Promise<string> =
   // Remove duplicates and filter meaningful content
   const uniqueLines = [...new Set(contentLines)]
     .filter(line => {
-      return line.length > 2 && 
+      // Much stricter filtering
+      return line.length > 10 && // Longer minimum length
              /[a-zA-Z]/.test(line) &&
              !line.match(/^[0-9\s.,-]+$/) &&
-             line.split(' ').length > 0; // Has actual words
+             line.split(/\s+/).filter(word => word.length > 2).length >= 2 && // At least 2 words
+             !line.includes('Type') &&
+             !line.includes('Subtype') &&
+             !line.includes('Font') &&
+             !line.includes('Encoding') &&
+             !line.includes('stream') &&
+             !line.includes('endstream') &&
+             !line.includes('Adobe') &&
+             !line.includes('Producer') &&
+             !line.includes('Creator');
     });
   
   return uniqueLines.join('\n').trim();
 };
 
-// PDF.js as fallback only
+// PDF.js library instance
 let pdfjsLib: any = null;
 
 const initializePDFJS = async () => {
@@ -110,19 +122,13 @@ const initializePDFJS = async () => {
     // Import PDF.js
     pdfjsLib = await import('pdfjs-dist');
     
-    // Try to completely disable workers by monkey-patching
+    // Properly configure the worker
     if (pdfjsLib.GlobalWorkerOptions) {
-      // Set to undefined to force main thread processing
-      pdfjsLib.GlobalWorkerOptions.workerSrc = undefined;
-      pdfjsLib.GlobalWorkerOptions.workerPort = undefined;
+      // Set the worker source to the file in public directory
+      pdfjsLib.GlobalWorkerOptions.workerSrc = '/pdf.worker.min.js';
     }
     
-    // Also try to patch the library directly
-    if (pdfjsLib.PDFWorker) {
-      pdfjsLib.PDFWorker = undefined;
-    }
-    
-    console.log('✅ PDF.js initialized in main thread mode');
+    console.log('✅ PDF.js initialized successfully');
     return pdfjsLib;
   } catch (error) {
     console.error('❌ Failed to initialize PDF.js:', error);
@@ -239,8 +245,8 @@ export class FileTextExtractor {
       console.log('📄 Loading PDF document with minimal configuration...');
       const loadingTask = pdfLib.getDocument(documentConfig);
       
-      // Shorter timeout since simple method is primary now
-      const loadTimeout = 10000; // 10 seconds
+      // Much shorter timeout for better performance
+      const loadTimeout = 3000; // 3 seconds
       pdf = await Promise.race([
         loadingTask.promise,
         new Promise((_, reject) => 
@@ -268,22 +274,22 @@ export class FileTextExtractor {
         try {
           console.log(`📄 Extracting text from page ${pageNum}/${maxPages}`);
           
-          // Get page with timeout
+          // Get page with much shorter timeout
           page = await Promise.race([
             pdf.getPage(pageNum),
             new Promise((_, reject) => 
-              setTimeout(() => reject(new Error('Page loading timeout')), 15000)
+              setTimeout(() => reject(new Error('Page loading timeout')), 2000) // 2 seconds
             )
           ]);
           
-          // Extract text content with timeout protection
+          // Extract text content with shorter timeout
           const textContent = await Promise.race([
             page.getTextContent({
               normalizeWhitespace: true,
               disableCombineTextItems: false
             }),
             new Promise((_, reject) => 
-              setTimeout(() => reject(new Error('Text extraction timeout')), 10000)
+              setTimeout(() => reject(new Error('Text extraction timeout')), 2000) // 2 seconds
             )
           ]) as any;
           
