@@ -3,38 +3,101 @@ import mammoth from 'mammoth';
 // Alternative PDF text extraction using a completely different approach
 // We'll try to bypass PDF.js entirely and use a simpler method
 
-// Simple PDF text extraction without PDF.js
+// Improved PDF text extraction that focuses on actual content
 const extractPDFTextSimple = async (arrayBuffer: ArrayBuffer): Promise<string> => {
-  // Convert ArrayBuffer to string to look for text content
   const uint8Array = new Uint8Array(arrayBuffer);
   let text = '';
   
-  // Simple text extraction by looking for text patterns in the PDF binary
-  for (let i = 0; i < uint8Array.length - 1; i++) {
+  // Convert binary to string first
+  for (let i = 0; i < uint8Array.length; i++) {
     const char = uint8Array[i];
-    
-    // Look for readable ASCII characters (letters, numbers, spaces, punctuation)
     if ((char >= 32 && char <= 126) || char === 10 || char === 13) {
       text += String.fromCharCode(char);
+    } else {
+      text += ' '; // Replace non-printable with space
     }
   }
   
-  // Clean up the extracted text
-  const lines = text.split(/[\r\n]+/)
-    .map(line => line.trim())
+  // Look for PDF text content patterns - PDF stores text in specific ways
+  const contentLines = [];
+  
+  // Method 1: Look for text between BT (Begin Text) and ET (End Text) operators
+  const btEtPattern = /BT\s+(.*?)\s+ET/gs;
+  let match;
+  while ((match = btEtPattern.exec(text)) !== null) {
+    const textBlock = match[1];
+    // Extract text from PDF text showing operators like (text) Tj or [(text)] TJ
+    const textMatches = textBlock.match(/\((.*?)\)\s*T[jJ]/g);
+    if (textMatches) {
+      textMatches.forEach(tm => {
+        const extracted = tm.match(/\((.*?)\)/);
+        if (extracted && extracted[1]) {
+          const cleanText = extracted[1]
+            .replace(/\\n/g, '\n')
+            .replace(/\\r/g, '\r')
+            .replace(/\\t/g, '\t')
+            .replace(/\\\\/g, '\\')
+            .replace(/\\"/g, '"')
+            .replace(/\\'/g, "'");
+          if (cleanText.length > 2 && /[a-zA-Z]/.test(cleanText)) {
+            contentLines.push(cleanText.trim());
+          }
+        }
+      });
+    }
+  }
+  
+  // Method 2: Look for text in array format [(text) spacing (more text)] TJ
+  const arrayTextPattern = /\[(.*?)\]\s*TJ/gs;
+  while ((match = arrayTextPattern.exec(text)) !== null) {
+    const arrayContent = match[1];
+    const textParts = arrayContent.match(/\((.*?)\)/g);
+    if (textParts) {
+      textParts.forEach(part => {
+        const extracted = part.match(/\((.*?)\)/);
+        if (extracted && extracted[1]) {
+          const cleanText = extracted[1]
+            .replace(/\\n/g, '\n')
+            .replace(/\\r/g, '\r')
+            .replace(/\\t/g, '\t')
+            .replace(/\\\\/g, '\\')
+            .trim();
+          if (cleanText.length > 2 && /[a-zA-Z]/.test(cleanText)) {
+            contentLines.push(cleanText);
+          }
+        }
+      });
+    }
+  }
+  
+  // Method 3: Look for simple text patterns in parentheses (common in PDFs)
+  const simpleTextPattern = /\(([^)]{3,})\)/g;
+  while ((match = simpleTextPattern.exec(text)) !== null) {
+    const extracted = match[1];
+    if (extracted && /[a-zA-Z]/.test(extracted) && extracted.length > 2) {
+      // Filter out obvious metadata
+      if (!extracted.includes('Adobe') && 
+          !extracted.includes('Illustrator') && 
+          !extracted.includes('RGB') && 
+          !extracted.includes('CMYK') &&
+          !extracted.includes('.jpeg') &&
+          !extracted.includes('xmp') &&
+          !extracted.match(/^[A-Z0-9_-]+$/)) {
+        contentLines.push(extracted.trim());
+      }
+    }
+  }
+  
+  // Remove duplicates and filter meaningful content
+  const uniqueLines = [...new Set(contentLines)]
     .filter(line => {
-      // Filter out PDF metadata and keep only meaningful text
-      return line.length > 3 && 
-             !line.startsWith('<<') && 
-             !line.startsWith('>>') &&
-             !line.startsWith('/') &&
-             !line.includes('obj') &&
-             !line.includes('endobj') &&
-             !/^[0-9\s]+$/.test(line) &&
-             /[a-zA-Z]/.test(line);
+      return line.length > 2 && 
+             /[a-zA-Z]/.test(line) &&
+             !line.match(/^[0-9\s.,-]+$/) &&
+             line.split(' ').length > 0; // Has actual words
     });
   
-  return lines.join('\n').trim();
+  return uniqueLines.join('\n').trim();
 };
 
 // PDF.js as fallback only
@@ -100,11 +163,12 @@ export class FileTextExtractor {
       console.log('📄 Attempting simple binary text extraction...');
       try {
         const simpleText = await extractPDFTextSimple(arrayBuffer);
-        if (simpleText && simpleText.length > 100) { // If we got a reasonable amount of text
+        if (simpleText && simpleText.length > 50 && simpleText.split('\n').length > 3) { 
+          // Lower threshold - need at least 50 chars and multiple lines of actual content
           console.log(`📄 Simple extraction successful! Extracted ${simpleText.length} characters`);
           return `Text extracted from ${file.name}:\n\n${simpleText}`;
         } else {
-          console.log('📄 Simple extraction yielded insufficient text, trying PDF.js...');
+          console.log(`📄 Simple extraction yielded insufficient content (${simpleText.length} chars), trying PDF.js...`);
         }
       } catch (simpleError) {
         console.warn('📄 Simple extraction failed:', simpleError);
@@ -318,13 +382,62 @@ Total pages processed: ${pdf.numPages}, Text items found: ${totalTextItems}]`;
     }
     
     // Return helpful instructions for manual extraction
-    return `[PDF processing encountered technical difficulties with "${file.name}"]
+    // Check if this appears to be a visual/design-heavy PDF
+    const arrayBuffer = await file.arrayBuffer();
+    const uint8Array = new Uint8Array(arrayBuffer);
+    let pdfContent = '';
+    for (let i = 0; i < Math.min(uint8Array.length, 10000); i++) {
+      if (uint8Array[i] >= 32 && uint8Array[i] <= 126) {
+        pdfContent += String.fromCharCode(uint8Array[i]);
+      }
+    }
+    
+    const isVisualPDF = pdfContent.includes('Illustrator') || 
+                       pdfContent.includes('Adobe') ||
+                       pdfContent.includes('.jpeg') ||
+                       pdfContent.includes('Image') ||
+                       (pdfContent.match(/RGB|CMYK/g) || []).length > 5;
+    
+    if (isVisualPDF) {
+      return `[Visual presentation detected: "${file.name}"]
 
-The system was unable to automatically extract text from this PDF. This appears to be due to browser security restrictions preventing PDF.js worker execution, which can happen with:
-- Browser security policies blocking web workers
-- Content Security Policy (CSP) restrictions  
-- PDF.js compatibility issues with the current browser environment
+This appears to be a visual presentation created in Adobe Illustrator or similar design software, containing primarily images, graphics, and design elements rather than extractable text content.
+
+**ANALYSIS APPROACH FOR VISUAL PRESENTATIONS:**
+
+Since this is a visual presentation, I can still provide analysis, but I'll need you to describe the content. Here are two ways to proceed:
+
+**Option 1 - Quick Description (Recommended):**
+Simply describe what you see in the presentation:
+- What is the main topic/message?
+- What key points are presented on each slide?
+- What images or graphics are used?
+- Any data, statistics, or evidence shown?
+
+**Option 2 - Text Extraction (If there is readable text):**
+1. 📂 Open the PDF in your browser or PDF viewer
+2. 📋 Try to select and copy any visible text (some may be embedded in images)
+3. 💬 Paste any text you can copy into this chat
+
+**Option 3 - Slide-by-Slide Summary:**
+Go through each slide and tell me:
+- Slide 1: [describe content]
+- Slide 2: [describe content]
+- etc.
+
+✅ **Once you provide the content description, I'll conduct a complete scholarly analysis of the presentation's:**
+- Visual argument and persuasive design choices
+- Content structure and logical flow  
+- Evidence presentation and credibility
+- Target audience alignment
+- Design effectiveness and recommendations`;
+    } else {
+      return `[PDF processing encountered technical difficulties with "${file.name}"]
+
+The system was unable to automatically extract text from this PDF. This can happen with:
+- Browser security restrictions preventing PDF.js worker execution
 - Complex PDF layouts or embedded content
+- Encrypted or password-protected PDFs
 
 **IMMEDIATE SOLUTION: Manual text extraction (very simple!)**
 
@@ -340,13 +453,8 @@ The system was unable to automatically extract text from this PDF. This appears 
 3. Upload your PDF and download as TXT
 4. Upload the TXT file here instead
 
-**Method 3 - Google Docs:**
-1. Upload PDF to Google Drive
-2. Right-click → "Open with Google Docs"
-3. Copy the converted text content
-4. Paste into this chat
-
-✅ **Once you provide the text, I'll immediately conduct the complete scholarly analysis of your presentation including argumentative structure, evidence evaluation, and academic critique.**`;
+✅ **Once you provide the text, I'll immediately conduct the complete scholarly analysis including argumentative structure, evidence evaluation, and academic critique.**`;
+    }
   }
 
   /**

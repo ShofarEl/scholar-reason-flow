@@ -66,6 +66,13 @@ export class AIService {
 ${content}
 
 IMPORTANT: The user needs to manually extract the PDF content using one of the methods above and provide it to you for analysis. Please ask them to extract the text and paste it in the chat.`;
+                } else if (content.includes('Visual presentation detected')) {
+                  // Visual PDF detected - provide specific guidance for visual presentations
+                  content = `Visual Presentation Processing for "${f.name}":
+
+${content}
+
+IMPORTANT: This is a visual presentation that requires the user to describe the content since it contains primarily images and graphics rather than extractable text. Please ask them to describe what they see in the presentation.`;
                 } else if (content.startsWith('[') && content.endsWith(']') && content.includes('processing failed')) {
                   // Only replace if it's an error message, not actual content
                   content = `File: ${f.name} (${FileTextExtractor.getFileTypeDescription(actualFile)}) - ${content}`;
