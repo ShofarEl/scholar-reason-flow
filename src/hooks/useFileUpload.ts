@@ -56,7 +56,7 @@ export const useFileUpload = (options: UseFileUploadOptions = {}) => {
 
   const createFilePreview = useCallback((file: File): Promise<string | undefined> => {
     return new Promise((resolve) => {
-      if (file.type.startsWith('image/')) {
+      if (file.type.startsWith('image/') || file.type === 'application/pdf') {
         const reader = new FileReader();
         reader.onload = (e) => resolve(e.target?.result as string);
         reader.onerror = () => resolve(undefined);
