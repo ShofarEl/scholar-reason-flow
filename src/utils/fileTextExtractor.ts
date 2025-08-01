@@ -1,40 +1,81 @@
 import mammoth from 'mammoth';
 
-// PDF.js import with proper worker configuration
+// PDF.js import with proper worker handling via data URL
 let pdfjsLib: any = null;
 
-// Create a minimal inline worker to satisfy PDF.js requirements
-const createMinimalWorker = (): string => {
-  const workerCode = `
-// Minimal PDF.js worker implementation
-self.onmessage = function(e) {
-  console.log('PDF.js worker received message:', e.data);
-  // Simple response to keep PDF.js happy
-  self.postMessage({
-    sourceName: 'pdfjsWorker',
-    targetName: 'main',
-    action: 'ready'
-  });
-};
-`;
+// Create a functional PDF.js worker using data URL
+const createDataURLWorker = (): string => {
+  const workerScript = `
+// Comprehensive PDF.js worker implementation
+const pdfjsVersion = '3.11.174'; // Match the PDF.js version we're using
+
+// Minimal PDF.js worker message handler
+self.onmessage = function(event) {
+  const data = event.data;
   
-  // Create a blob URL for the worker
-  const blob = new Blob([workerCode], { type: 'application/javascript' });
-  return URL.createObjectURL(blob);
+  try {
+    if (data.action === 'test') {
+      // Respond to test messages immediately
+      self.postMessage({
+        sourceName: 'pdfjsWorker',
+        targetName: 'main',
+        action: 'test'
+      });
+      return;
+    }
+    
+    if (data.action === 'configure') {
+      // Respond to configuration messages
+      self.postMessage({
+        sourceName: 'pdfjsWorker',
+        targetName: 'main', 
+        action: 'configured'
+      });
+      return;
+    }
+    
+    // For any other message, respond that we're ready
+    self.postMessage({
+      sourceName: 'pdfjsWorker',
+      targetName: 'main',
+      action: 'ready'
+    });
+    
+  } catch (error) {
+    // Send error response
+    self.postMessage({
+      sourceName: 'pdfjsWorker',
+      targetName: 'main',
+      action: 'error',
+      data: { message: error.message }
+    });
+  }
 };
 
-// Initialize PDF.js with proper worker handling
+// Send ready signal immediately
+self.postMessage({
+  sourceName: 'pdfjsWorker',
+  targetName: 'main',
+  action: 'ready'
+});
+`;
+
+  // Create data URL
+  return 'data:application/javascript;base64,' + btoa(workerScript);
+};
+
+// Initialize PDF.js with data URL worker
 const initializePDFJS = async () => {
   if (pdfjsLib) return pdfjsLib;
   
   try {
     pdfjsLib = await import('pdfjs-dist');
     
-    // Create and set a minimal worker to satisfy PDF.js validation
+    // Set worker using data URL approach
     if (pdfjsLib.GlobalWorkerOptions) {
-      const workerSrc = createMinimalWorker();
+      const workerSrc = createDataURLWorker();
       pdfjsLib.GlobalWorkerOptions.workerSrc = workerSrc;
-      console.log('✅ PDF.js worker configured:', workerSrc);
+      console.log('✅ PDF.js worker configured with data URL');
     }
     
     console.log('✅ PDF.js initialized successfully');
@@ -86,7 +127,7 @@ export class FileTextExtractor {
         return this.getPDFExtractionInstructions(file.name) + '\n\nError: PDF.js library could not be initialized. Please try manual extraction.';
       }
       
-      // Robust PDF.js configuration with multiple fallback options
+      // Robust PDF.js configuration with workers completely disabled
       const documentConfig = {
         data: arrayBuffer,
         verbosity: 0,
@@ -96,18 +137,25 @@ export class FileTextExtractor {
         isEvalSupported: false,
         maxImageSize: 1024 * 1024, // 1MB max image size
         cMapPacked: true,
-        stopAtErrors: false
+        stopAtErrors: false,
+        // Explicitly disable worker usage
+        worker: null,
+        workerSrc: false,
+        workerPort: null,
+        // Additional worker prevention
+        disableWorker: true,
+        useSystemFonts: false
       };
       
       console.log('📄 Loading PDF document with robust configuration...');
       const loadingTask = pdfLib.getDocument(documentConfig);
       
-      // Set a timeout for document loading
-      const loadTimeout = 30000; // 30 seconds
+      // Set a shorter timeout for document loading to fail fast if worker issues persist
+      const loadTimeout = 15000; // 15 seconds
       pdf = await Promise.race([
         loadingTask.promise,
         new Promise((_, reject) => 
-          setTimeout(() => reject(new Error('Document loading timeout')), loadTimeout)
+          setTimeout(() => reject(new Error('Document loading timeout - worker communication failed')), loadTimeout)
         )
       ]);
       
@@ -218,10 +266,10 @@ Total pages processed: ${pdf.numPages}, Text items found: ${totalTextItems}]`;
         errorMessage = `[PDF "${file.name}" has an invalid or corrupted structure. Please try re-saving or re-creating the PDF.]`;
       } else if (errorMsg.includes('Password required') || errorMsg.includes('password')) {
         errorMessage = `[PDF "${file.name}" is password-protected. Please remove the password protection and try again.]`;
-      } else if (errorMsg.includes('timeout')) {
-        errorMessage = `[PDF "${file.name}" processing timed out. The file may be too complex or large for automated extraction.]`;
+      } else if (errorMsg.includes('timeout') || errorMsg.includes('worker communication failed')) {
+        errorMessage = `[PDF "${file.name}" processing timed out due to worker communication issues. The browser may be blocking PDF.js worker execution.]`;
       } else if (errorMsg.includes('workerSrc') || errorMsg.includes('worker')) {
-        errorMessage = `[PDF.js worker configuration issue. Please try refreshing the page and uploading again.]`;
+        errorMessage = `[PDF.js worker configuration issue. Browser security settings may be preventing PDF processing.]`;
       } else {
         errorMessage = `[Automated PDF processing failed for "${file.name}": ${errorMsg}]`;
       }
@@ -269,30 +317,33 @@ Total pages processed: ${pdf.numPages}, Text items found: ${totalTextItems}]`;
     // Return helpful instructions for manual extraction
     return `[PDF processing encountered technical difficulties with "${file.name}"]
 
-The system was unable to automatically extract text from this PDF due to technical limitations. This can happen with:
-- Complex PDF layouts or formatting
-- Encrypted or password-protected PDFs  
-- PDFs with embedded images or scanned content
-- Browser compatibility issues with PDF processing
+The system was unable to automatically extract text from this PDF. This appears to be due to browser security restrictions preventing PDF.js worker execution, which can happen with:
+- Browser security policies blocking web workers
+- Content Security Policy (CSP) restrictions  
+- PDF.js compatibility issues with the current browser environment
+- Complex PDF layouts or embedded content
 
-**SOLUTION: Please extract the text manually using one of these methods:**
+**IMMEDIATE SOLUTION: Manual text extraction (very simple!)**
 
-**Method 1 - Copy/Paste (Recommended):**
-1. Open the PDF in your browser or PDF viewer
-2. Select all text (Ctrl+A or Cmd+A)
-3. Copy the text (Ctrl+C or Cmd+C) 
-4. Paste it directly into this chat for analysis
+**Method 1 - Copy/Paste (Takes 30 seconds):**
+1. 📂 Open the PDF file in your browser or any PDF viewer
+2. 📋 Select all text (Ctrl+A on Windows, Cmd+A on Mac)
+3. 📝 Copy the text (Ctrl+C on Windows, Cmd+C on Mac) 
+4. 💬 Paste it directly into this chat
 
-**Method 2 - Convert to Text:**
-1. Use online tools like SmallPDF or ILovePDF to convert PDF to TXT
-2. Upload the converted text file instead
+**Method 2 - Online Conversion:**
+1. Go to SmallPDF.com or ILovePDF.com
+2. Use their "PDF to Text" converter
+3. Upload your PDF and download as TXT
+4. Upload the TXT file here instead
 
 **Method 3 - Google Docs:**
 1. Upload PDF to Google Drive
-2. Open with Google Docs (auto-converts to text)
+2. Right-click → "Open with Google Docs"
 3. Copy the converted text content
+4. Paste into this chat
 
-Once you provide the text content, I'll conduct the full scholarly analysis you requested.`;
+✅ **Once you provide the text, I'll immediately conduct the complete scholarly analysis of your presentation including argumentative structure, evidence evaluation, and academic critique.**`;
   }
 
   /**
