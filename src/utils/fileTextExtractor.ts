@@ -159,24 +159,46 @@ export class FileTextExtractor {
         return `[File "${file.name}" does not appear to be a valid PDF file. Please ensure you've uploaded a PDF document.]`;
       }
       
-      // APPROACH 1: Try simple binary text extraction first
+      // APPROACH 1: Try PDF.js first (more reliable for actual content)
+      console.log('📄 Attempting PDF.js extraction...');
+      try {
+        const pdfjsText = await this.extractFromPDFWithPDFJS(file, arrayBuffer);
+        // Check if PDF.js extraction was successful and contains actual content
+        if (pdfjsText && 
+            pdfjsText.length > 100 && 
+            !pdfjsText.includes('[PDF') && // Not an error message
+            !pdfjsText.includes('[No readable text') &&
+            /[a-zA-Z]/.test(pdfjsText)) {
+          console.log(`📄 PDF.js extraction successful! Extracted ${pdfjsText.length} characters`);
+          return pdfjsText;
+        } else {
+          console.log(`📄 PDF.js extraction yielded insufficient content, trying simple extraction...`);
+        }
+      } catch (pdfjsError) {
+        console.warn('📄 PDF.js extraction failed:', pdfjsError);
+      }
+      
+      // APPROACH 2: Try simple binary text extraction as fallback
       console.log('📄 Attempting simple binary text extraction...');
       try {
         const simpleText = await extractPDFTextSimple(arrayBuffer);
-        if (simpleText && simpleText.length > 50 && simpleText.split('\n').length > 3) { 
-          // Lower threshold - need at least 50 chars and multiple lines of actual content
+        
+        // Much stricter quality checks for simple extraction
+        if (simpleText && 
+            simpleText.length > 200 && // Higher threshold
+            simpleText.split('\n').filter(line => line.trim().length > 10).length > 5 && // More meaningful lines
+            !this.isLikelyMetadata(simpleText)) { // Check if it looks like metadata
           console.log(`📄 Simple extraction successful! Extracted ${simpleText.length} characters`);
           return `Text extracted from ${file.name}:\n\n${simpleText}`;
         } else {
-          console.log(`📄 Simple extraction yielded insufficient content (${simpleText.length} chars), trying PDF.js...`);
+          console.log(`📄 Simple extraction yielded insufficient or poor quality content`);
         }
       } catch (simpleError) {
         console.warn('📄 Simple extraction failed:', simpleError);
       }
       
-      // APPROACH 2: Try PDF.js as fallback
-      console.log('📄 Attempting PDF.js extraction...');
-      return await this.extractFromPDFWithPDFJS(file, arrayBuffer);
+      // If both methods fail, return fallback instructions
+      return await this.extractFromPDFFallback(file);
       
     } catch (error: any) {
       console.error('📄 All PDF extraction methods failed:', error);
@@ -354,6 +376,58 @@ Total pages processed: ${pdf.numPages}, Text items found: ${totalTextItems}]`;
         }
       }
     }
+  }
+
+  /**
+   * Check if extracted text looks like PDF metadata rather than actual content
+   */
+  private static isLikelyMetadata(text: string): boolean {
+    const metadataIndicators = [
+      '/Type',
+      '/Subtype', 
+      '/Font',
+      '/Encoding',
+      'obj',
+      'endobj',
+      'stream',
+      'endstream',
+      '/Length',
+      '/Filter',
+      'xref',
+      '%%EOF',
+      '/Root',
+      '/Info',
+      '/Size',
+      'startxref',
+      '/Pages',
+      '/Kids',
+      '/Count',
+      '/MediaBox',
+      '/Resources',
+      'Adobe',
+      'Illustrator',
+      'PDF-1.',
+      '/Creator',
+      '/Producer',
+      'RGB',
+      'CMYK'
+    ];
+    
+    const lines = text.split('\n').filter(line => line.trim().length > 0);
+    let metadataCount = 0;
+    let totalLines = lines.length;
+    
+    for (const line of lines.slice(0, 20)) { // Check first 20 lines
+      for (const indicator of metadataIndicators) {
+        if (line.includes(indicator)) {
+          metadataCount++;
+          break;
+        }
+      }
+    }
+    
+    // If more than 40% of lines contain metadata indicators, it's likely metadata
+    return totalLines > 0 && (metadataCount / Math.min(totalLines, 20)) > 0.4;
   }
 
   /**
