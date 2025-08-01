@@ -75,14 +75,33 @@ const extractPDFTextSimple = async (arrayBuffer: ArrayBuffer): Promise<string> =
   while ((match = simpleTextPattern.exec(text)) !== null) {
     const extracted = match[1];
     if (extracted && /[a-zA-Z]/.test(extracted) && extracted.length > 2) {
-      // Filter out obvious metadata
-      if (!extracted.includes('Adobe') && 
-          !extracted.includes('Illustrator') && 
-          !extracted.includes('RGB') && 
-          !extracted.includes('CMYK') &&
-          !extracted.includes('.jpeg') &&
-          !extracted.includes('xmp') &&
-          !extracted.match(/^[A-Z0-9_-]+$/)) {
+      // Enhanced filtering to exclude metadata and binary data
+      const isMetadata = extracted.includes('Adobe') || 
+                        extracted.includes('Illustrator') || 
+                        extracted.includes('RGB') || 
+                        extracted.includes('CMYK') ||
+                        extracted.includes('.jpeg') ||
+                        extracted.includes('.jpg') ||
+                        extracted.includes('.png') ||
+                        extracted.includes('xmp') ||
+                        extracted.includes('metadata') ||
+                        extracted.includes('font') ||
+                        extracted.includes('Font') ||
+                        extracted.includes('encoding') ||
+                        extracted.includes('Encoding') ||
+                        extracted.includes('stream') ||
+                        extracted.includes('endstream') ||
+                        extracted.includes('xref') ||
+                        extracted.includes('trailer') ||
+                        extracted.includes('startxref') ||
+                        extracted.includes('obj') ||
+                        extracted.includes('endobj') ||
+                        extracted.match(/^[A-Z0-9_-]+$/) ||
+                        extracted.match(/^[0-9\s.,-]+$/) ||
+                        extracted.length > 200 || // Very long strings are usually metadata
+                        extracted.split(' ').length < 2; // Single words are often metadata
+      
+      if (!isMetadata) {
         contentLines.push(extracted.trim());
       }
     }
@@ -91,10 +110,12 @@ const extractPDFTextSimple = async (arrayBuffer: ArrayBuffer): Promise<string> =
   // Remove duplicates and filter meaningful content
   const uniqueLines = [...new Set(contentLines)]
     .filter(line => {
-      return line.length > 2 && 
+      return line.length > 3 && 
              /[a-zA-Z]/.test(line) &&
+             line.split(' ').length >= 2 && // At least 2 words
              !line.match(/^[0-9\s.,-]+$/) &&
-             line.split(' ').length > 0; // Has actual words
+             !line.match(/^[A-Z0-9_-]+$/) &&
+             line.length < 200; // Not too long (likely metadata)
     });
   
   return uniqueLines.join('\n').trim();
@@ -163,12 +184,12 @@ export class FileTextExtractor {
       console.log('📄 Attempting simple binary text extraction...');
       try {
         const simpleText = await extractPDFTextSimple(arrayBuffer);
-        if (simpleText && simpleText.length > 50 && simpleText.split('\n').length > 3) { 
-          // Lower threshold - need at least 50 chars and multiple lines of actual content
+        if (simpleText && simpleText.length > 100 && simpleText.split('\n').length > 5) { 
+          // Higher threshold - need substantial content to avoid metadata
           console.log(`📄 Simple extraction successful! Extracted ${simpleText.length} characters`);
           return `Text extracted from ${file.name}:\n\n${simpleText}`;
         } else {
-          console.log(`📄 Simple extraction yielded insufficient content (${simpleText.length} chars), trying PDF.js...`);
+          console.log(`📄 Simple extraction yielded insufficient content (${simpleText.length} chars), likely visual PDF. Trying PDF.js...`);
         }
       } catch (simpleError) {
         console.warn('📄 Simple extraction failed:', simpleError);
@@ -395,65 +416,77 @@ Total pages processed: ${pdf.numPages}, Text items found: ${totalTextItems}]`;
     const isVisualPDF = pdfContent.includes('Illustrator') || 
                        pdfContent.includes('Adobe') ||
                        pdfContent.includes('.jpeg') ||
+                       pdfContent.includes('.jpg') ||
+                       pdfContent.includes('.png') ||
                        pdfContent.includes('Image') ||
-                       (pdfContent.match(/RGB|CMYK/g) || []).length > 5;
+                       pdfContent.includes('RGB') ||
+                       pdfContent.includes('CMYK') ||
+                       pdfContent.includes('xmp') ||
+                       pdfContent.includes('metadata') ||
+                       (pdfContent.match(/RGB|CMYK/g) || []).length > 3;
     
     if (isVisualPDF) {
       return `[Visual presentation detected: "${file.name}"]
 
-This appears to be a visual presentation created in Adobe Illustrator or similar design software, containing primarily images, graphics, and design elements rather than extractable text content.
+This appears to be a visual presentation created in Adobe Illustrator, Photoshop, or similar design software. The PDF contains primarily images, graphics, and design elements rather than extractable text content.
 
-**ANALYSIS APPROACH FOR VISUAL PRESENTATIONS:**
+**WHY THIS HAPPENS:**
+- Design software often embeds text as images or graphics
+- Visual presentations prioritize layout over text extraction
+- The PDF structure is optimized for visual display, not text processing
 
-Since this is a visual presentation, I can still provide analysis, but I'll need you to describe the content. Here are two ways to proceed:
+**SOLUTION - Describe the Content (Takes 2 minutes):**
 
-**Option 1 - Quick Description (Recommended):**
-Simply describe what you see in the presentation:
-- What is the main topic/message?
-- What key points are presented on each slide?
-- What images or graphics are used?
-- Any data, statistics, or evidence shown?
+**Option 1 - Quick Overview:**
+Tell me the main topic and key points you see in the presentation.
 
-**Option 2 - Text Extraction (If there is readable text):**
-1. 📂 Open the PDF in your browser or PDF viewer
-2. 📋 Try to select and copy any visible text (some may be embedded in images)
-3. 💬 Paste any text you can copy into this chat
-
-**Option 3 - Slide-by-Slide Summary:**
-Go through each slide and tell me:
-- Slide 1: [describe content]
-- Slide 2: [describe content]
+**Option 2 - Slide-by-Slide (Most Helpful):**
+Go through each slide and describe:
+- Slide 1: [main content, text, images]
+- Slide 2: [main content, text, images]
 - etc.
 
-✅ **Once you provide the content description, I'll conduct a complete scholarly analysis of the presentation's:**
-- Visual argument and persuasive design choices
-- Content structure and logical flow  
-- Evidence presentation and credibility
-- Target audience alignment
-- Design effectiveness and recommendations`;
+**Option 3 - Copy Any Visible Text:**
+1. Open the PDF in your browser or PDF viewer
+2. Try to select and copy any text you can highlight
+3. Paste it here (even if it's just titles or bullet points)
+
+✅ **Once you describe the content, I'll provide a complete scholarly analysis including:**
+- Argumentative structure and logical flow
+- Evidence quality and presentation
+- Design effectiveness and audience targeting
+- Academic critique and recommendations`;
     } else {
       return `[PDF processing encountered technical difficulties with "${file.name}"]
 
-The system was unable to automatically extract text from this PDF. This can happen with:
-- Browser security restrictions preventing PDF.js worker execution
-- Complex PDF layouts or embedded content
-- Encrypted or password-protected PDFs
+The system was unable to automatically extract text from this PDF. This commonly happens with:
+- Visual presentations created in design software
+- PDFs with complex layouts or embedded graphics
+- Browser security restrictions
+- PDFs where text is embedded as images
 
-**IMMEDIATE SOLUTION: Manual text extraction (very simple!)**
+**QUICK SOLUTION - Manual Text Extraction (30 seconds):**
 
-**Method 1 - Copy/Paste (Takes 30 seconds):**
-1. 📂 Open the PDF file in your browser or any PDF viewer
-2. 📋 Select all text (Ctrl+A on Windows, Cmd+A on Mac)
-3. 📝 Copy the text (Ctrl+C on Windows, Cmd+C on Mac) 
-4. 💬 Paste it directly into this chat
+**Method 1 - Copy/Paste (Easiest):**
+1. Open the PDF in your browser or any PDF viewer
+2. Try to select text (Ctrl+A or Cmd+A)
+3. Copy any text you can select
+4. Paste it here (even if it's just titles or bullet points)
 
-**Method 2 - Online Conversion:**
+**Method 2 - Describe Content (If no text is selectable):**
+Simply tell me what you see in the PDF:
+- Main topic/title
+- Key points or sections
+- Any text you can read
+- Images or graphics described
+
+**Method 3 - Online Conversion:**
 1. Go to SmallPDF.com or ILovePDF.com
-2. Use their "PDF to Text" converter
-3. Upload your PDF and download as TXT
-4. Upload the TXT file here instead
+2. Use "PDF to Text" converter
+3. Upload PDF and download as TXT
+4. Upload the TXT file here
 
-✅ **Once you provide the text, I'll immediately conduct the complete scholarly analysis including argumentative structure, evidence evaluation, and academic critique.**`;
+✅ **Once you provide the content, I'll conduct a complete scholarly analysis including argumentative structure, evidence evaluation, and academic critique.**`;
     }
   }
 
