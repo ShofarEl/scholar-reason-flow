@@ -54,15 +54,26 @@ export class AIService {
                 
                 // Extract text content
                 content = await FileTextExtractor.extractText(actualFile);
+                console.log(`Extracted content for ${f.name}:`, content.substring(0, 200) + '...');
                 
-                // If content is empty or just metadata, provide file info
-                if (!content || content.trim().length < 10 || content.startsWith('[') && content.endsWith(']')) {
-                  content = `File: ${f.name} (${FileTextExtractor.getFileTypeDescription(actualFile)}) - Content available for analysis`;
+                // Handle different types of extraction results
+                if (!content || content.trim().length === 0) {
+                  content = `File: ${f.name} (${FileTextExtractor.getFileTypeDescription(actualFile)}) - Could not extract text content`;
+                } else if (content.includes('Automated PDF processing failed')) {
+                  // PDF extraction failed - provide the full instructions to help the user
+                  content = `PDF Processing Failed for "${f.name}":
+
+${content}
+
+IMPORTANT: The user needs to manually extract the PDF content using one of the methods above and provide it to you for analysis. Please ask them to extract the text and paste it in the chat.`;
+                } else if (content.startsWith('[') && content.endsWith(']') && content.includes('processing failed')) {
+                  // Only replace if it's an error message, not actual content
+                  content = `File: ${f.name} (${FileTextExtractor.getFileTypeDescription(actualFile)}) - ${content}`;
                 }
               }
             } catch (error) {
               console.error(`Error extracting content from ${f.name}:`, error);
-              content = `File: ${f.name} (${FileTextExtractor.getFileTypeDescription({ name: f.name, type: f.type } as File)}) - Content available for analysis`;
+              content = `File: ${f.name} (${FileTextExtractor.getFileTypeDescription({ name: f.name, type: f.type } as File)}) - Text extraction failed: ${error.message}`;
             }
             
             return {
