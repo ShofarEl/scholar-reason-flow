@@ -1,84 +1,65 @@
 import mammoth from 'mammoth';
 
-// PDF.js import with proper worker handling via data URL
+// Alternative PDF text extraction using a completely different approach
+// We'll try to bypass PDF.js entirely and use a simpler method
+
+// Simple PDF text extraction without PDF.js
+const extractPDFTextSimple = async (arrayBuffer: ArrayBuffer): Promise<string> => {
+  // Convert ArrayBuffer to string to look for text content
+  const uint8Array = new Uint8Array(arrayBuffer);
+  let text = '';
+  
+  // Simple text extraction by looking for text patterns in the PDF binary
+  for (let i = 0; i < uint8Array.length - 1; i++) {
+    const char = uint8Array[i];
+    
+    // Look for readable ASCII characters (letters, numbers, spaces, punctuation)
+    if ((char >= 32 && char <= 126) || char === 10 || char === 13) {
+      text += String.fromCharCode(char);
+    }
+  }
+  
+  // Clean up the extracted text
+  const lines = text.split(/[\r\n]+/)
+    .map(line => line.trim())
+    .filter(line => {
+      // Filter out PDF metadata and keep only meaningful text
+      return line.length > 3 && 
+             !line.startsWith('<<') && 
+             !line.startsWith('>>') &&
+             !line.startsWith('/') &&
+             !line.includes('obj') &&
+             !line.includes('endobj') &&
+             !/^[0-9\s]+$/.test(line) &&
+             /[a-zA-Z]/.test(line);
+    });
+  
+  return lines.join('\n').trim();
+};
+
+// PDF.js as fallback only
 let pdfjsLib: any = null;
 
-// Create a functional PDF.js worker using data URL
-const createDataURLWorker = (): string => {
-  const workerScript = `
-// Comprehensive PDF.js worker implementation
-const pdfjsVersion = '3.11.174'; // Match the PDF.js version we're using
-
-// Minimal PDF.js worker message handler
-self.onmessage = function(event) {
-  const data = event.data;
-  
-  try {
-    if (data.action === 'test') {
-      // Respond to test messages immediately
-      self.postMessage({
-        sourceName: 'pdfjsWorker',
-        targetName: 'main',
-        action: 'test'
-      });
-      return;
-    }
-    
-    if (data.action === 'configure') {
-      // Respond to configuration messages
-      self.postMessage({
-        sourceName: 'pdfjsWorker',
-        targetName: 'main', 
-        action: 'configured'
-      });
-      return;
-    }
-    
-    // For any other message, respond that we're ready
-    self.postMessage({
-      sourceName: 'pdfjsWorker',
-      targetName: 'main',
-      action: 'ready'
-    });
-    
-  } catch (error) {
-    // Send error response
-    self.postMessage({
-      sourceName: 'pdfjsWorker',
-      targetName: 'main',
-      action: 'error',
-      data: { message: error.message }
-    });
-  }
-};
-
-// Send ready signal immediately
-self.postMessage({
-  sourceName: 'pdfjsWorker',
-  targetName: 'main',
-  action: 'ready'
-});
-`;
-
-  // Create data URL
-  return 'data:application/javascript;base64,' + btoa(workerScript);
-};
-
-// Initialize PDF.js with data URL worker
 const initializePDFJS = async () => {
   if (pdfjsLib) return pdfjsLib;
   
   try {
+    // Import PDF.js
     pdfjsLib = await import('pdfjs-dist');
     
-    // Set worker using data URL approach
+    // Try to completely disable workers by monkey-patching
     if (pdfjsLib.GlobalWorkerOptions) {
-      const workerSrc = createDataURLWorker();
-      pdfjsLib.GlobalWorkerOptions.workerSrc = workerSrc;
-      console.log('✅ PDF.js worker configured with data URL');
+      // Set to undefined to force main thread processing
+      pdfjsLib.GlobalWorkerOptions.workerSrc = undefined;
+      pdfjsLib.GlobalWorkerOptions.workerPort = undefined;
     }
     
-    console.log('✅ PDF.js initialized successfully');
+    // Also try to patch the library directly
+    if (pdfjsLib.PDFWorker) {
+      pdfjsLib.PDFWorker = undefined;
+    }
+    
+    console.log('✅ PDF.js initialized in main thread mode');
     return pdfjsLib;
   } catch (error) {
     console.error('❌ Failed to initialize PDF.js:', error);
@@ -92,14 +73,11 @@ const initializePDFJS = async () => {
 export class FileTextExtractor {
 
   /**
-   * Extract text from a PDF file using a robust, worker-compatible approach
+   * Extract text from a PDF file using multiple approaches
    */
   static async extractFromPDF(file: File): Promise<string> {
-    let pdfLib: any = null;
-    let pdf: any = null;
-    
     try {
-      console.log('📄 Starting robust PDF extraction for:', file.name, 'Size:', file.size, 'bytes');
+      console.log('📄 Starting multi-approach PDF extraction for:', file.name, 'Size:', file.size, 'bytes');
       
       // Validate file size (prevent processing extremely large files)
       const maxFileSize = 50 * 1024 * 1024; // 50MB
@@ -118,16 +96,48 @@ export class FileTextExtractor {
         return `[File "${file.name}" does not appear to be a valid PDF file. Please ensure you've uploaded a PDF document.]`;
       }
       
+      // APPROACH 1: Try simple binary text extraction first
+      console.log('📄 Attempting simple binary text extraction...');
+      try {
+        const simpleText = await extractPDFTextSimple(arrayBuffer);
+        if (simpleText && simpleText.length > 100) { // If we got a reasonable amount of text
+          console.log(`📄 Simple extraction successful! Extracted ${simpleText.length} characters`);
+          return `Text extracted from ${file.name}:\n\n${simpleText}`;
+        } else {
+          console.log('📄 Simple extraction yielded insufficient text, trying PDF.js...');
+        }
+      } catch (simpleError) {
+        console.warn('📄 Simple extraction failed:', simpleError);
+      }
+      
+      // APPROACH 2: Try PDF.js as fallback
+      console.log('📄 Attempting PDF.js extraction...');
+      return await this.extractFromPDFWithPDFJS(file, arrayBuffer);
+      
+    } catch (error: any) {
+      console.error('📄 All PDF extraction methods failed:', error);
+      return this.getPDFExtractionInstructions(file.name) + '\n\nError details: All extraction methods failed.';
+    }
+  }
+  
+  /**
+   * Extract text using PDF.js library
+   */
+  private static async extractFromPDFWithPDFJS(file: File, arrayBuffer: ArrayBuffer): Promise<string> {
+    let pdfLib: any = null;
+    let pdf: any = null;
+    
+    try {
       // Initialize PDF.js with proper error handling
       try {
         pdfLib = await initializePDFJS();
         console.log('📄 PDF.js library initialized successfully');
       } catch (initError) {
         console.error('📄 PDF.js initialization failed:', initError);
-        return this.getPDFExtractionInstructions(file.name) + '\n\nError: PDF.js library could not be initialized. Please try manual extraction.';
+        throw new Error('PDF.js initialization failed');
       }
       
-      // Robust PDF.js configuration with workers completely disabled
+      // Ultra-minimal PDF.js configuration to avoid worker issues entirely
       const documentConfig = {
         data: arrayBuffer,
         verbosity: 0,
@@ -135,31 +145,24 @@ export class FileTextExtractor {
         disableFontFace: true,
         useWorkerFetch: false,
         isEvalSupported: false,
-        maxImageSize: 1024 * 1024, // 1MB max image size
-        cMapPacked: true,
         stopAtErrors: false,
-        // Explicitly disable worker usage
-        worker: null,
-        workerSrc: false,
-        workerPort: null,
-        // Additional worker prevention
-        disableWorker: true,
-        useSystemFonts: false
+        maxImageSize: -1,
+        cMapPacked: false
       };
       
-      console.log('📄 Loading PDF document with robust configuration...');
+      console.log('📄 Loading PDF document with minimal configuration...');
       const loadingTask = pdfLib.getDocument(documentConfig);
       
-      // Set a shorter timeout for document loading to fail fast if worker issues persist
-      const loadTimeout = 15000; // 15 seconds
+      // Shorter timeout since simple method is primary now
+      const loadTimeout = 10000; // 10 seconds
       pdf = await Promise.race([
         loadingTask.promise,
         new Promise((_, reject) => 
-          setTimeout(() => reject(new Error('Document loading timeout - worker communication failed')), loadTimeout)
+          setTimeout(() => reject(new Error('PDF.js timeout')), loadTimeout)
         )
       ]);
       
-      console.log(`📄 PDF loaded successfully! Pages: ${pdf.numPages}`);
+      console.log(`📄 PDF.js loaded successfully! Pages: ${pdf.numPages}`);
       
       // Check for password protection or corruption
       if (!pdf || pdf.numPages === 0) {
@@ -274,16 +277,16 @@ Total pages processed: ${pdf.numPages}, Text items found: ${totalTextItems}]`;
         errorMessage = `[Automated PDF processing failed for "${file.name}": ${errorMsg}]`;
       }
       
-      // If extraction fails, provide manual instructions
-      return this.getPDFExtractionInstructions(file.name) + '\n\nError details: ' + errorMessage;
+      // If extraction fails, throw error to trigger fallback
+      throw new Error(`PDF.js extraction failed: ${errorMessage}`);
     } finally {
       // Ensure proper cleanup of PDF resources
       if (pdf && typeof pdf.destroy === 'function') {
         try {
           await pdf.destroy();
-          console.log('📄 PDF resources cleaned up successfully');
+          console.log('📄 PDF.js resources cleaned up successfully');
         } catch (cleanupError) {
-          console.warn('📄 PDF cleanup failed:', cleanupError);
+          console.warn('📄 PDF.js cleanup failed:', cleanupError);
         }
       }
     }
