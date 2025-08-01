@@ -56,9 +56,34 @@ export class AIService {
                 content = await FileTextExtractor.extractText(actualFile);
                 console.log(`Extracted content for ${f.name}:`, content.substring(0, 200) + '...');
                 
+                // Validate extracted content to ensure it's readable text, not binary/metadata
+                const isReadableText = content && 
+                  content.length > 0 && 
+                  /[a-zA-Z]{3,}/.test(content) && // Contains actual words
+                  !content.includes('FlateDecode') && // Not PDF metadata
+                  !content.includes('Filter') && // Not PDF metadata
+                  !content.includes('Adobe') && // Not PDF metadata
+                  !content.includes('Illustrator') && // Not PDF metadata
+                  !content.match(/^[0-9\s.,-]+$/); // Not just numbers/punctuation
+                
                 // Handle different types of extraction results
                 if (!content || content.trim().length === 0) {
                   content = `File: ${f.name} (${FileTextExtractor.getFileTypeDescription(actualFile)}) - Could not extract text content`;
+                } else if (!isReadableText) {
+                  // Content appears to be binary/metadata instead of readable text
+                  content = `File: ${f.name} (${FileTextExtractor.getFileTypeDescription(actualFile)}) - Extracted content appears to be binary data or metadata instead of readable text.
+
+This often happens with:
+- Visual presentations created in design software (Adobe Illustrator, etc.)
+- PDFs with text embedded as images
+- Corrupted or improperly formatted PDFs
+
+Please try:
+1. Opening the PDF in a PDF viewer and copying the text manually
+2. Converting the PDF to text format using online tools (SmallPDF, ILovePDF, etc.)
+3. Describing the content if it's a visual presentation
+
+Extracted content (first 200 chars): ${content.substring(0, 200)}...`;
                 } else if (content.includes('Automated PDF processing failed')) {
                   // PDF extraction failed - provide the full instructions to help the user
                   content = `PDF Processing Failed for "${f.name}":

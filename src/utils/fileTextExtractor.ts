@@ -1,24 +1,46 @@
 import mammoth from 'mammoth';
 
-// Alternative PDF text extraction using a completely different approach
-// We'll try to bypass PDF.js entirely and use a simpler method
+// PDF.js for reliable PDF text extraction
+let pdfjsLib: any = null;
 
-// Improved PDF text extraction that focuses on actual content
-const extractPDFTextSimple = async (arrayBuffer: ArrayBuffer): Promise<string> => {
+const initializePDFJS = async () => {
+  if (pdfjsLib) return pdfjsLib;
+  
+  try {
+    // Import PDF.js
+    pdfjsLib = await import('pdfjs-dist');
+    
+    // Configure PDF.js to work in main thread (no workers)
+    if (pdfjsLib.GlobalWorkerOptions) {
+      pdfjsLib.GlobalWorkerOptions.workerSrc = undefined;
+    }
+    
+    console.log('✅ PDF.js initialized successfully');
+    return pdfjsLib;
+  } catch (error) {
+    console.error('❌ Failed to initialize PDF.js:', error);
+    throw new Error('PDF.js initialization failed');
+  }
+};
+
+/**
+ * Simple fallback PDF text extraction for when PDF.js fails
+ */
+const extractPDFTextFallback = async (arrayBuffer: ArrayBuffer): Promise<string> => {
+  console.log('📄 Using fallback PDF text extraction method');
+  
   const uint8Array = new Uint8Array(arrayBuffer);
   let text = '';
   
-  // Convert binary to string first
+  // Convert binary to string, focusing on printable characters
   for (let i = 0; i < uint8Array.length; i++) {
     const char = uint8Array[i];
     if ((char >= 32 && char <= 126) || char === 10 || char === 13) {
       text += String.fromCharCode(char);
-    } else {
-      text += ' '; // Replace non-printable with space
     }
   }
   
-  // Look for PDF text content patterns - PDF stores text in specific ways
+  // Look for actual text content patterns in PDF
   const contentLines = [];
   
   // Method 1: Look for text between BT (Begin Text) and ET (End Text) operators
@@ -75,15 +97,58 @@ const extractPDFTextSimple = async (arrayBuffer: ArrayBuffer): Promise<string> =
   while ((match = simpleTextPattern.exec(text)) !== null) {
     const extracted = match[1];
     if (extracted && /[a-zA-Z]/.test(extracted) && extracted.length > 2) {
-      // Filter out obvious metadata
-      if (!extracted.includes('Adobe') && 
-          !extracted.includes('Illustrator') && 
-          !extracted.includes('RGB') && 
-          !extracted.includes('CMYK') &&
-          !extracted.includes('.jpeg') &&
-          !extracted.includes('xmp') &&
-          !extracted.match(/^[A-Z0-9_-]+$/)) {
+      // Enhanced filtering to exclude metadata and binary data
+      const isMetadata = extracted.includes('Adobe') || 
+                        extracted.includes('Illustrator') || 
+                        extracted.includes('RGB') || 
+                        extracted.includes('CMYK') ||
+                        extracted.includes('.jpeg') ||
+                        extracted.includes('xmp') ||
+                        extracted.includes('FlateDecode') ||
+                        extracted.includes('Filter') ||
+                        extracted.includes('DecodeParms') ||
+                        extracted.includes('ColorSpace') ||
+                        extracted.includes('Font') ||
+                        extracted.includes('ProcSet') ||
+                        extracted.includes('MediaBox') ||
+                        extracted.includes('Resources') ||
+                        extracted.includes('Contents') ||
+                        extracted.includes('Type') ||
+                        extracted.includes('Subtype') ||
+                        extracted.includes('Length') ||
+                        extracted.includes('Stream') ||
+                        extracted.includes('endstream') ||
+                        extracted.includes('endobj') ||
+                        extracted.includes('xref') ||
+                        extracted.includes('trailer') ||
+                        extracted.includes('startxref') ||
+                        extracted.match(/^[A-Z0-9_-]+$/) || // All caps/numbers/underscores
+                        extracted.match(/^[0-9\s.,-]+$/) || // Just numbers/punctuation
+                        extracted.match(/^[0-9]+$/) || // Just numbers
+                        extracted.length < 3; // Too short
+      
+      if (!isMetadata) {
         contentLines.push(extracted.trim());
+      }
+    }
+  }
+  
+  // Method 4: Look for text in stream content (less common but sometimes works)
+  const streamPattern = /stream\s+(.*?)\s+endstream/gs;
+  while ((match = streamPattern.exec(text)) !== null) {
+    const streamContent = match[1];
+    // Look for readable text in streams
+    const words = streamContent.match(/[a-zA-Z]{3,}/g);
+    if (words && words.length > 0) {
+      // Filter out metadata words
+      const filteredWords = words.filter(word => 
+        !word.includes('Adobe') && 
+        !word.includes('Filter') && 
+        !word.includes('Decode') &&
+        word.length > 2
+      );
+      if (filteredWords.length > 0) {
+        contentLines.push(filteredWords.join(' '));
       }
     }
   }
@@ -93,41 +158,30 @@ const extractPDFTextSimple = async (arrayBuffer: ArrayBuffer): Promise<string> =
     .filter(line => {
       return line.length > 2 && 
              /[a-zA-Z]/.test(line) &&
-             !line.match(/^[0-9\s.,-]+$/) &&
-             line.split(' ').length > 0; // Has actual words
+             line.split(' ').length > 0 && // Has actual words
+             !line.match(/^[0-9\s.,-]+$/) && // Not just numbers/punctuation
+             !line.match(/^[A-Z0-9_-]+$/) && // Not just caps/numbers/underscores
+             line.length < 1000; // Not too long (likely binary data)
     });
   
-  return uniqueLines.join('\n').trim();
-};
-
-// PDF.js as fallback only
-let pdfjsLib: any = null;
-
-const initializePDFJS = async () => {
-  if (pdfjsLib) return pdfjsLib;
+  const result = uniqueLines.join('\n').trim();
+  console.log(`📄 Fallback extraction found ${uniqueLines.length} text lines`);
   
-  try {
-    // Import PDF.js
-    pdfjsLib = await import('pdfjs-dist');
+  // Additional validation to ensure we have meaningful content
+  if (result.length > 0) {
+    const wordCount = result.split(/\s+/).length;
+    const avgWordLength = result.replace(/[^a-zA-Z]/g, '').length / Math.max(wordCount, 1);
     
-    // Try to completely disable workers by monkey-patching
-    if (pdfjsLib.GlobalWorkerOptions) {
-      // Set to undefined to force main thread processing
-      pdfjsLib.GlobalWorkerOptions.workerSrc = undefined;
-      pdfjsLib.GlobalWorkerOptions.workerPort = undefined;
+    console.log(`📄 Fallback validation: ${wordCount} words, avg length: ${avgWordLength.toFixed(1)}`);
+    
+    // If average word length is too short or too long, it's likely not real text
+    if (avgWordLength < 2 || avgWordLength > 15) {
+      console.warn('📄 Warning: Average word length suggests binary/metadata content');
+      return '';
     }
-    
-    // Also try to patch the library directly
-    if (pdfjsLib.PDFWorker) {
-      pdfjsLib.PDFWorker = undefined;
-    }
-    
-    console.log('✅ PDF.js initialized in main thread mode');
-    return pdfjsLib;
-  } catch (error) {
-    console.error('❌ Failed to initialize PDF.js:', error);
-    throw new Error('PDF.js initialization failed');
   }
+  
+  return result;
 };
 
 /**
@@ -136,13 +190,13 @@ const initializePDFJS = async () => {
 export class FileTextExtractor {
 
   /**
-   * Extract text from a PDF file using multiple approaches
+   * Extract text from a PDF file using PDF.js with fallback
    */
   static async extractFromPDF(file: File): Promise<string> {
     try {
-      console.log('📄 Starting multi-approach PDF extraction for:', file.name, 'Size:', file.size, 'bytes');
+      console.log('📄 Starting PDF text extraction for:', file.name, 'Size:', file.size, 'bytes');
       
-      // Validate file size (prevent processing extremely large files)
+      // Validate file size
       const maxFileSize = 50 * 1024 * 1024; // 50MB
       if (file.size > maxFileSize) {
         return `[PDF file "${file.name}" is too large (${Math.round(file.size / 1024 / 1024)}MB). Maximum supported size is 50MB. Please try a smaller file or extract text manually.]`;
@@ -155,177 +209,171 @@ export class FileTextExtractor {
       // Check if the file is actually a PDF by looking at the magic number
       const uint8Array = new Uint8Array(arrayBuffer);
       const header = Array.from(uint8Array.slice(0, 5)).map(b => String.fromCharCode(b)).join('');
+      console.log('📄 PDF header check:', header);
       if (!header.startsWith('%PDF-')) {
         return `[File "${file.name}" does not appear to be a valid PDF file. Please ensure you've uploaded a PDF document.]`;
       }
       
-      // APPROACH 1: Try simple binary text extraction first
-      console.log('📄 Attempting simple binary text extraction...');
+      // Try PDF.js first
       try {
-        const simpleText = await extractPDFTextSimple(arrayBuffer);
-        if (simpleText && simpleText.length > 50 && simpleText.split('\n').length > 3) { 
-          // Lower threshold - need at least 50 chars and multiple lines of actual content
-          console.log(`📄 Simple extraction successful! Extracted ${simpleText.length} characters`);
-          return `Text extracted from ${file.name}:\n\n${simpleText}`;
-        } else {
-          console.log(`📄 Simple extraction yielded insufficient content (${simpleText.length} chars), trying PDF.js...`);
-        }
-      } catch (simpleError) {
-        console.warn('📄 Simple extraction failed:', simpleError);
-      }
-      
-      // APPROACH 2: Try PDF.js as fallback
-      console.log('📄 Attempting PDF.js extraction...');
-      return await this.extractFromPDFWithPDFJS(file, arrayBuffer);
-      
-    } catch (error: any) {
-      console.error('📄 All PDF extraction methods failed:', error);
-      return this.getPDFExtractionInstructions(file.name) + '\n\nError details: All extraction methods failed.';
-    }
-  }
-  
-  /**
-   * Extract text using PDF.js library
-   */
-  private static async extractFromPDFWithPDFJS(file: File, arrayBuffer: ArrayBuffer): Promise<string> {
-    let pdfLib: any = null;
-    let pdf: any = null;
-    
-    try {
-      // Initialize PDF.js with proper error handling
-      try {
-        pdfLib = await initializePDFJS();
-        console.log('📄 PDF.js library initialized successfully');
-      } catch (initError) {
-        console.error('📄 PDF.js initialization failed:', initError);
-        throw new Error('PDF.js initialization failed');
-      }
-      
-      // Ultra-minimal PDF.js configuration to avoid worker issues entirely
-      const documentConfig = {
-        data: arrayBuffer,
-        verbosity: 0,
-        disableAutoFetch: true,
-        disableFontFace: true,
-        useWorkerFetch: false,
-        isEvalSupported: false,
-        stopAtErrors: false,
-        maxImageSize: -1,
-        cMapPacked: false
-      };
-      
-      console.log('📄 Loading PDF document with minimal configuration...');
-      const loadingTask = pdfLib.getDocument(documentConfig);
-      
-      // Shorter timeout since simple method is primary now
-      const loadTimeout = 10000; // 10 seconds
-      pdf = await Promise.race([
-        loadingTask.promise,
-        new Promise((_, reject) => 
-          setTimeout(() => reject(new Error('PDF.js timeout')), loadTimeout)
-        )
-      ]);
-      
-      console.log(`📄 PDF.js loaded successfully! Pages: ${pdf.numPages}`);
-      
-      // Check for password protection or corruption
-      if (!pdf || pdf.numPages === 0) {
-        if (pdf) await pdf.destroy();
-        return `[PDF "${file.name}" appears to be password-protected or corrupted. Please ensure the PDF is not encrypted and try again.]`;
-      }
-      
-      let fullText = '';
-      let totalTextItems = 0;
-      let successfulPages = 0;
-      const maxPages = Math.min(pdf.numPages, 500); // Limit for performance
-      
-      // Extract text from each page with comprehensive error handling
-      for (let pageNum = 1; pageNum <= maxPages; pageNum++) {
-        let page: any = null;
+        console.log('📄 Attempting PDF.js extraction...');
+        const pdfLib = await initializePDFJS();
         
-        try {
-          console.log(`📄 Extracting text from page ${pageNum}/${maxPages}`);
+        // Configure PDF loading with minimal settings
+        const loadingTask = pdfLib.getDocument({
+          data: arrayBuffer,
+          verbosity: 0,
+          disableAutoFetch: true,
+          disableFontFace: true,
+          useWorkerFetch: false,
+          isEvalSupported: false,
+          stopAtErrors: false,
+          maxImageSize: -1,
+          cMapPacked: false
+        });
+        
+        console.log('📄 Loading PDF document...');
+        
+        // Load PDF with timeout
+        const pdf = await Promise.race([
+          loadingTask.promise,
+          new Promise((_, reject) => 
+            setTimeout(() => reject(new Error('PDF loading timeout')), 15000)
+          )
+        ]);
+        
+        console.log(`📄 PDF loaded successfully! Pages: ${pdf.numPages}`);
+        
+        // Check for password protection or corruption
+        if (!pdf || pdf.numPages === 0) {
+          if (pdf) await pdf.destroy();
+          throw new Error('PDF appears to be password-protected or corrupted');
+        }
+        
+        let fullText = '';
+        let successfulPages = 0;
+        let totalTextItems = 0;
+        const maxPages = Math.min(pdf.numPages, 500); // Limit for performance
+        
+        // Extract text from each page
+        for (let pageNum = 1; pageNum <= maxPages; pageNum++) {
+          let page: any = null;
           
-          // Get page with timeout
-          page = await Promise.race([
-            pdf.getPage(pageNum),
-            new Promise((_, reject) => 
-              setTimeout(() => reject(new Error('Page loading timeout')), 15000)
-            )
-          ]);
-          
-          // Extract text content with timeout protection
-          const textContent = await Promise.race([
-            page.getTextContent({
-              normalizeWhitespace: true,
-              disableCombineTextItems: false
-            }),
-            new Promise((_, reject) => 
-              setTimeout(() => reject(new Error('Text extraction timeout')), 10000)
-            )
-          ]) as any;
-          
-          console.log(`📄 Page ${pageNum} has ${textContent.items.length} text items`);
-          totalTextItems += textContent.items.length;
-          
-          // Extract and clean up text with improved formatting
-          const textItems = textContent.items || [];
-          const pageText = textItems
-            .filter((item: any) => item && item.str && typeof item.str === 'string' && item.str.trim())
-            .map((item: any) => item.str.trim())
-            .join(' ')
-            .replace(/\s+/g, ' ') // Normalize spacing
-            .trim();
-          
-          if (pageText && pageText.length > 0) {
-            fullText += `Page ${pageNum}:\n${pageText}\n\n`;
-            console.log(`📄 Page ${pageNum} extracted ${pageText.length} characters`);
-            successfulPages++;
-          } else {
-            console.warn(`📄 Page ${pageNum} contains no readable text`);
-            fullText += `Page ${pageNum}: [No readable text found on this page]\n\n`;
-          }
-          
-        } catch (pageError: any) {
-          console.error(`📄 Error extracting text from page ${pageNum}:`, pageError);
-          fullText += `Page ${pageNum}: [Error extracting text: ${pageError.message || 'Unknown error'}]\n\n`;
-        } finally {
-          // Clean up page resources
-          if (page && typeof page.cleanup === 'function') {
-            try {
-              page.cleanup();
-            } catch (cleanupError) {
-              console.warn(`📄 Page ${pageNum} cleanup failed:`, cleanupError);
+          try {
+            console.log(`📄 Extracting text from page ${pageNum}/${maxPages}`);
+            
+            // Get page with timeout
+            page = await Promise.race([
+              pdf.getPage(pageNum),
+              new Promise((_, reject) => 
+                setTimeout(() => reject(new Error('Page loading timeout')), 10000)
+              )
+            ]);
+            
+            // Extract text content with timeout protection
+            const textContent = await Promise.race([
+              page.getTextContent({
+                normalizeWhitespace: true,
+                disableCombineTextItems: false
+              }),
+              new Promise((_, reject) => 
+                setTimeout(() => reject(new Error('Text extraction timeout')), 10000)
+              )
+            ]) as any;
+            
+            console.log(`📄 Page ${pageNum} has ${textContent.items.length} text items`);
+            totalTextItems += textContent.items.length;
+            
+            // Extract and clean up text
+            const textItems = textContent.items || [];
+            const pageText = textItems
+              .filter((item: any) => item && item.str && typeof item.str === 'string' && item.str.trim())
+              .map((item: any) => item.str.trim())
+              .join(' ')
+              .replace(/\s+/g, ' ') // Normalize spacing
+              .trim();
+            
+            if (pageText && pageText.length > 0) {
+              fullText += `Page ${pageNum}:\n${pageText}\n\n`;
+              console.log(`📄 Page ${pageNum} extracted ${pageText.length} characters`);
+              successfulPages++;
+              
+              // Log a sample of the extracted text for debugging
+              if (pageNum === 1) {
+                const sample = pageText.substring(0, 200);
+                console.log(`📄 Sample text from page ${pageNum}:`, sample);
+              }
+            } else {
+              console.warn(`📄 Page ${pageNum} contains no readable text`);
+              fullText += `Page ${pageNum}: [No readable text found on this page]\n\n`;
+            }
+            
+          } catch (pageError: any) {
+            console.error(`📄 Error extracting text from page ${pageNum}:`, pageError);
+            fullText += `Page ${pageNum}: [Error extracting text: ${pageError.message || 'Unknown error'}]\n\n`;
+          } finally {
+            // Clean up page resources
+            if (page && typeof page.cleanup === 'function') {
+              try {
+                page.cleanup();
+              } catch (cleanupError) {
+                console.warn(`📄 Page ${pageNum} cleanup failed:`, cleanupError);
+              }
             }
           }
         }
-      }
-      
-      // Handle cases with too many pages
-      if (pdf.numPages > 500) {
-        fullText += `\n[Note: This PDF has ${pdf.numPages} pages. Only the first 500 pages were processed for performance reasons.]\n`;
-      }
-      
-      const result = fullText.trim();
-      if (result && successfulPages > 0) {
-        console.log(`📄 PDF extraction successful! Total text length: ${result.length} characters from ${totalTextItems} text items across ${successfulPages} pages`);
-        return result;
-      } else {
-        const message = `[No readable text content found in PDF "${file.name}". This could mean:
-- The PDF contains only images or scanned content (requires OCR)
-- The PDF is encrypted or password-protected
-- The PDF uses a format that's not supported
-- Text is embedded as images rather than selectable text
-
-Total pages processed: ${pdf.numPages}, Text items found: ${totalTextItems}]`;
-        console.warn(`📄 PDF extraction completed but no usable text found. Pages: ${pdf.numPages}, Items: ${totalTextItems}`);
-        return message;
+        
+        // Handle cases with too many pages
+        if (pdf.numPages > 500) {
+          fullText += `\n[Note: This PDF has ${pdf.numPages} pages. Only the first 500 pages were processed for performance reasons.]\n`;
+        }
+        
+        const result = fullText.trim();
+        if (result && successfulPages > 0) {
+          console.log(`📄 PDF.js extraction successful! Total text length: ${result.length} characters from ${successfulPages} pages, ${totalTextItems} text items`);
+          
+          // Additional validation to ensure we're not getting binary/metadata
+          const hasReadableText = /[a-zA-Z]{3,}/.test(result);
+          if (!hasReadableText) {
+            console.warn('📄 Warning: Extracted content appears to be binary/metadata, not readable text');
+            throw new Error('Extracted content appears to be binary/metadata, not readable text');
+          }
+          
+          return result;
+        } else {
+          throw new Error('PDF.js extraction completed but no usable text found');
+        }
+        
+      } catch (pdfjsError: any) {
+        console.warn('📄 PDF.js extraction failed, trying fallback method:', pdfjsError);
+        
+        // Try fallback method
+        try {
+          const fallbackText = await extractPDFTextFallback(arrayBuffer);
+          if (fallbackText && fallbackText.length > 50) {
+            console.log(`📄 Fallback extraction successful! Extracted ${fallbackText.length} characters`);
+            
+            // Additional validation for fallback method
+            const hasReadableText = /[a-zA-Z]{3,}/.test(fallbackText);
+            if (!hasReadableText) {
+              console.warn('📄 Warning: Fallback extracted content appears to be binary/metadata');
+              throw new Error('Fallback extracted content appears to be binary/metadata');
+            }
+            
+            return fallbackText;
+          } else {
+            throw new Error('Fallback extraction yielded insufficient content');
+          }
+        } catch (fallbackError) {
+          console.error('📄 Fallback extraction also failed:', fallbackError);
+          throw pdfjsError; // Throw the original error for better error handling
+        }
       }
       
     } catch (error: any) {
-      console.error('📄 PDF extraction failed:', error);
+      console.error('📄 All PDF extraction methods failed:', error);
       
-      // Provide more specific error messages based on the error type
+      // Provide specific error messages based on the error type
       let errorMessage = '';
       const errorMsg = error.message || '';
       
@@ -333,127 +381,30 @@ Total pages processed: ${pdf.numPages}, Text items found: ${totalTextItems}]`;
         errorMessage = `[PDF "${file.name}" has an invalid or corrupted structure. Please try re-saving or re-creating the PDF.]`;
       } else if (errorMsg.includes('Password required') || errorMsg.includes('password')) {
         errorMessage = `[PDF "${file.name}" is password-protected. Please remove the password protection and try again.]`;
-      } else if (errorMsg.includes('timeout') || errorMsg.includes('worker communication failed')) {
-        errorMessage = `[PDF "${file.name}" processing timed out due to worker communication issues. The browser may be blocking PDF.js worker execution.]`;
-      } else if (errorMsg.includes('workerSrc') || errorMsg.includes('worker')) {
-        errorMessage = `[PDF.js worker configuration issue. Browser security settings may be preventing PDF processing.]`;
+      } else if (errorMsg.includes('timeout')) {
+        errorMessage = `[PDF "${file.name}" processing timed out. The file may be too complex or corrupted.]`;
+      } else if (errorMsg.includes('No readable text content found') || errorMsg.includes('no usable text found')) {
+        errorMessage = `[PDF "${file.name}" contains no extractable text content. This could be:
+- A scanned document (requires OCR)
+- A visual presentation with text embedded as images
+- A corrupted or unsupported PDF format
+
+Please try copying the text manually or converting the PDF to text format.]`;
+      } else if (errorMsg.includes('binary/metadata')) {
+        errorMessage = `[PDF "${file.name}" appears to contain binary data or metadata instead of readable text. This often happens with:
+- Visual presentations created in design software
+- PDFs with text embedded as images
+- Corrupted or improperly formatted PDFs
+
+Please try:
+1. Opening the PDF in a PDF viewer and copying the text manually
+2. Converting the PDF to text format using online tools
+3. Describing the content if it's a visual presentation]`;
       } else {
-        errorMessage = `[Automated PDF processing failed for "${file.name}": ${errorMsg}]`;
+        errorMessage = `[PDF processing failed for "${file.name}": ${errorMsg}]`;
       }
       
-      // If extraction fails, throw error to trigger fallback
-      throw new Error(`PDF.js extraction failed: ${errorMessage}`);
-    } finally {
-      // Ensure proper cleanup of PDF resources
-      if (pdf && typeof pdf.destroy === 'function') {
-        try {
-          await pdf.destroy();
-          console.log('📄 PDF.js resources cleaned up successfully');
-        } catch (cleanupError) {
-          console.warn('📄 PDF.js cleanup failed:', cleanupError);
-        }
-      }
-    }
-  }
-
-  /**
-   * Fallback PDF extraction method when primary method fails
-   */
-  static async extractFromPDFFallback(file: File): Promise<string> {
-    console.log('📄 Using fallback PDF extraction method for:', file.name);
-    
-    // Basic file validation
-    const maxFileSize = 50 * 1024 * 1024; // 50MB
-    if (file.size > maxFileSize) {
-      return `[PDF file "${file.name}" is too large (${Math.round(file.size / 1024 / 1024)}MB). Maximum supported size is 50MB. Please try a smaller file or extract text manually.]`;
-    }
-    
-    // Check if it's actually a PDF
-    try {
-      const arrayBuffer = await file.arrayBuffer();
-      const uint8Array = new Uint8Array(arrayBuffer);
-      const header = Array.from(uint8Array.slice(0, 5)).map(b => String.fromCharCode(b)).join('');
-      
-      if (!header.startsWith('%PDF-')) {
-        return `[File "${file.name}" does not appear to be a valid PDF file. Please ensure you've uploaded a PDF document.]`;
-      }
-    } catch (error) {
-      console.error('Fallback PDF validation failed:', error);
-    }
-    
-    // Return helpful instructions for manual extraction
-    // Check if this appears to be a visual/design-heavy PDF
-    const arrayBuffer = await file.arrayBuffer();
-    const uint8Array = new Uint8Array(arrayBuffer);
-    let pdfContent = '';
-    for (let i = 0; i < Math.min(uint8Array.length, 10000); i++) {
-      if (uint8Array[i] >= 32 && uint8Array[i] <= 126) {
-        pdfContent += String.fromCharCode(uint8Array[i]);
-      }
-    }
-    
-    const isVisualPDF = pdfContent.includes('Illustrator') || 
-                       pdfContent.includes('Adobe') ||
-                       pdfContent.includes('.jpeg') ||
-                       pdfContent.includes('Image') ||
-                       (pdfContent.match(/RGB|CMYK/g) || []).length > 5;
-    
-    if (isVisualPDF) {
-      return `[Visual presentation detected: "${file.name}"]
-
-This appears to be a visual presentation created in Adobe Illustrator or similar design software, containing primarily images, graphics, and design elements rather than extractable text content.
-
-**ANALYSIS APPROACH FOR VISUAL PRESENTATIONS:**
-
-Since this is a visual presentation, I can still provide analysis, but I'll need you to describe the content. Here are two ways to proceed:
-
-**Option 1 - Quick Description (Recommended):**
-Simply describe what you see in the presentation:
-- What is the main topic/message?
-- What key points are presented on each slide?
-- What images or graphics are used?
-- Any data, statistics, or evidence shown?
-
-**Option 2 - Text Extraction (If there is readable text):**
-1. 📂 Open the PDF in your browser or PDF viewer
-2. 📋 Try to select and copy any visible text (some may be embedded in images)
-3. 💬 Paste any text you can copy into this chat
-
-**Option 3 - Slide-by-Slide Summary:**
-Go through each slide and tell me:
-- Slide 1: [describe content]
-- Slide 2: [describe content]
-- etc.
-
-✅ **Once you provide the content description, I'll conduct a complete scholarly analysis of the presentation's:**
-- Visual argument and persuasive design choices
-- Content structure and logical flow  
-- Evidence presentation and credibility
-- Target audience alignment
-- Design effectiveness and recommendations`;
-    } else {
-      return `[PDF processing encountered technical difficulties with "${file.name}"]
-
-The system was unable to automatically extract text from this PDF. This can happen with:
-- Browser security restrictions preventing PDF.js worker execution
-- Complex PDF layouts or embedded content
-- Encrypted or password-protected PDFs
-
-**IMMEDIATE SOLUTION: Manual text extraction (very simple!)**
-
-**Method 1 - Copy/Paste (Takes 30 seconds):**
-1. 📂 Open the PDF file in your browser or any PDF viewer
-2. 📋 Select all text (Ctrl+A on Windows, Cmd+A on Mac)
-3. 📝 Copy the text (Ctrl+C on Windows, Cmd+C on Mac) 
-4. 💬 Paste it directly into this chat
-
-**Method 2 - Online Conversion:**
-1. Go to SmallPDF.com or ILovePDF.com
-2. Use their "PDF to Text" converter
-3. Upload your PDF and download as TXT
-4. Upload the TXT file here instead
-
-✅ **Once you provide the text, I'll immediately conduct the complete scholarly analysis including argumentative structure, evidence evaluation, and academic critique.**`;
+      return errorMessage + '\n\n' + this.getPDFExtractionInstructions(file.name);
     }
   }
 
@@ -599,14 +550,9 @@ Please provide the text content using one of these methods for analysis.`;
       return `[Image file: ${fileName} (${mimeType})]`;
     }
 
-    // Handle PDF files with fallback approach
+    // Handle PDF files
     if (mimeType === 'application/pdf') {
-      try {
-        return await this.extractFromPDF(file);
-      } catch (error) {
-        console.warn('Primary PDF extraction failed, trying fallback method:', error);
-        return await this.extractFromPDFFallback(file);
-      }
+      return await this.extractFromPDF(file);
     }
 
     // Handle Word documents
@@ -670,5 +616,183 @@ Please provide the text content using one of these methods for analysis.`;
     }
 
     return 'Document';
+  }
+
+  /**
+   * Test method to debug PDF extraction issues
+   */
+  static async testPDFExtraction(file: File): Promise<{
+    success: boolean;
+    method: string;
+    content: string;
+    error?: string;
+    debugInfo: any;
+  }> {
+    const debugInfo = {
+      fileName: file.name,
+      fileSize: file.size,
+      fileType: file.type,
+      timestamp: new Date().toISOString()
+    };
+
+    try {
+      console.log('🧪 Testing PDF extraction for:', file.name);
+      
+      const arrayBuffer = await file.arrayBuffer();
+      const uint8Array = new Uint8Array(arrayBuffer);
+      const header = Array.from(uint8Array.slice(0, 5)).map(b => String.fromCharCode(b)).join('');
+      
+      debugInfo.pdfHeader = header;
+      debugInfo.isValidPDF = header.startsWith('%PDF-');
+      
+      if (!header.startsWith('%PDF-')) {
+        return {
+          success: false,
+          method: 'validation',
+          content: '',
+          error: 'Not a valid PDF file',
+          debugInfo
+        };
+      }
+
+      // Try PDF.js first
+      try {
+        console.log('🧪 Testing PDF.js extraction...');
+        const pdfLib = await initializePDFJS();
+        
+        const loadingTask = pdfLib.getDocument({
+          data: arrayBuffer,
+          verbosity: 0,
+          disableAutoFetch: true,
+          disableFontFace: true,
+          useWorkerFetch: false,
+          isEvalSupported: false,
+          stopAtErrors: false,
+          maxImageSize: -1,
+          cMapPacked: false
+        });
+        
+        const pdf = await loadingTask.promise;
+        debugInfo.pdfPages = pdf.numPages;
+        
+        if (pdf.numPages === 0) {
+          await pdf.destroy();
+          return {
+            success: false,
+            method: 'pdfjs',
+            content: '',
+            error: 'PDF has no pages',
+            debugInfo
+          };
+        }
+        
+        // Try to extract text from first page only for testing
+        const page = await pdf.getPage(1);
+        const textContent = await page.getTextContent({
+          normalizeWhitespace: true,
+          disableCombineTextItems: false
+        });
+        
+        const textItems = textContent.items || [];
+        const pageText = textItems
+          .filter((item: any) => item && item.str && typeof item.str === 'string' && item.str.trim())
+          .map((item: any) => item.str.trim())
+          .join(' ')
+          .replace(/\s+/g, ' ')
+          .trim();
+        
+        debugInfo.textItemsCount = textItems.length;
+        debugInfo.extractedTextLength = pageText.length;
+        debugInfo.sampleText = pageText.substring(0, 100);
+        
+        await pdf.destroy();
+        
+        if (pageText && pageText.length > 0) {
+          const hasReadableText = /[a-zA-Z]{3,}/.test(pageText);
+          if (hasReadableText) {
+            return {
+              success: true,
+              method: 'pdfjs',
+              content: pageText,
+              debugInfo
+            };
+          } else {
+            return {
+              success: false,
+              method: 'pdfjs',
+              content: pageText,
+              error: 'Extracted content appears to be binary/metadata',
+              debugInfo
+            };
+          }
+        } else {
+          return {
+            success: false,
+            method: 'pdfjs',
+            content: '',
+            error: 'No text content found',
+            debugInfo
+          };
+        }
+        
+      } catch (pdfjsError: any) {
+        debugInfo.pdfjsError = pdfjsError.message;
+        console.log('🧪 PDF.js failed, trying fallback...');
+        
+        // Try fallback method
+        try {
+          const fallbackText = await extractPDFTextFallback(arrayBuffer);
+          debugInfo.fallbackTextLength = fallbackText.length;
+          debugInfo.fallbackSampleText = fallbackText.substring(0, 100);
+          
+          if (fallbackText && fallbackText.length > 50) {
+            const hasReadableText = /[a-zA-Z]{3,}/.test(fallbackText);
+            if (hasReadableText) {
+              return {
+                success: true,
+                method: 'fallback',
+                content: fallbackText,
+                debugInfo
+              };
+            } else {
+              return {
+                success: false,
+                method: 'fallback',
+                content: fallbackText,
+                error: 'Fallback extracted content appears to be binary/metadata',
+                debugInfo
+              };
+            }
+          } else {
+            return {
+              success: false,
+              method: 'fallback',
+              content: fallbackText,
+              error: 'Fallback extraction yielded insufficient content',
+              debugInfo
+            };
+          }
+        } catch (fallbackError: any) {
+          debugInfo.fallbackError = fallbackError.message;
+          return {
+            success: false,
+            method: 'fallback',
+            content: '',
+            error: `Fallback extraction failed: ${fallbackError.message}`,
+            debugInfo
+          };
+        }
+      }
+      
+    } catch (error: any) {
+      debugInfo.generalError = error.message;
+      return {
+        success: false,
+        method: 'general',
+        content: '',
+        error: error.message,
+        debugInfo
+      };
+    }
   }
 }
