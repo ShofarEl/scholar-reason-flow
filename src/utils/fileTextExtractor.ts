@@ -1,225 +1,27 @@
-import * as pdfjsLib from 'pdfjs-dist';
 import mammoth from 'mammoth';
 
-// PREEMPTIVE WORKER ASSASSINATION - Execute IMMEDIATELY on module load
-console.log('🔥 PREEMPTIVE STRIKE: Assassinating PDF.js worker before it can spawn');
+// Simple PDF.js import - we'll handle worker configuration properly
+let pdfjsLib: any = null;
 
-// Method 1: Immediately nullify worker options
-try {
-  (pdfjsLib as any).GlobalWorkerOptions = (pdfjsLib as any).GlobalWorkerOptions || {};
-  (pdfjsLib as any).GlobalWorkerOptions.workerSrc = '';
-  (pdfjsLib as any).GlobalWorkerOptions.workerPort = null;
-  (pdfjsLib as any).GlobalWorkerOptions.isWorkerDisabled = true;
-  console.log('🎯 PREEMPTIVE: GlobalWorkerOptions neutered');
-} catch (e) {
-  console.warn('🎯 PREEMPTIVE: Method 1 failed:', e);
-}
-
-// Method 2: Patch the library's internal worker factory if it exists
-try {
-  if ((pdfjsLib as any).PDFWorker) {
-    (pdfjsLib as any).PDFWorker = class {
-      static fromPort() { return null; }
-      static getWorkerSrc() { return ''; }
-      constructor() { 
-        console.log('🚫 PREEMPTIVE: PDF Worker creation blocked');
-        return null;
-      }
-    };
-    console.log('🎯 PREEMPTIVE: PDFWorker class neutered');
-  }
-} catch (e) {
-  console.warn('🎯 PREEMPTIVE: Method 2 failed:', e);
-}
-
-// Method 3: Override any getDocument function immediately
-try {
-  if ((pdfjsLib as any).getDocument) {
-    const originalGetDoc = (pdfjsLib as any).getDocument;
-    (pdfjsLib as any).getDocument = function(src: any, options: any = {}) {
-      console.log('🔧 PREEMPTIVE: getDocument call intercepted at module level');
-      return originalGetDoc(src, {
-        ...options,
-        useWorkerFetch: false,
-        disableWorker: true,
-        isEvalSupported: false,
-        verbosity: 0
-      });
-    };
-    console.log('🎯 PREEMPTIVE: getDocument neutered');
-  }
-} catch (e) {
-  console.warn('🎯 PREEMPTIVE: Method 3 failed:', e);
-}
-
-// NUCLEAR OPTION: Create inline worker that PDF.js cannot ignore
-const createInlineWorker = () => {
-  // Minimal PDF.js worker implementation - NO IMPORTS, NO EXTERNAL DEPS
-  const workerScript = `
-    // Dummy PDF.js worker that prevents external loading
-    console.log('🔥 INLINE WORKER: Starting minimal PDF.js worker');
-    
-    // Minimal worker message handler
-    self.onmessage = function(e) {
-      try {
-        console.log('🔥 INLINE WORKER: Received message', e.data);
-        
-        // Just respond that we're ready for any message
-        self.postMessage({
-          sourceName: 'pdfjsWorker',
-          targetName: 'main',
-          action: 'ready',
-          data: null
-        });
-      } catch (error) {
-        console.error('🔥 INLINE WORKER: Error', error);
-        self.postMessage({
-          sourceName: 'pdfjsWorker', 
-          targetName: 'main',
-          action: 'error',
-          data: { message: error.message }
-        });
-      }
-    };
-    
-    // Send initial ready signal
-    console.log('🔥 INLINE WORKER: Sending ready signal');
-    self.postMessage({
-      sourceName: 'pdfjsWorker',
-      targetName: 'main', 
-      action: 'ready',
-      data: null
-    });
-  `;
+// Initialize PDF.js with minimal configuration
+const initializePDFJS = async () => {
+  if (pdfjsLib) return pdfjsLib;
   
   try {
-    // Create blob URL for the worker
-    const blob = new Blob([workerScript], { type: 'application/javascript' });
-    const url = URL.createObjectURL(blob);
-    console.log('🔥 INLINE WORKER: Created blob URL:', url);
-    return url;
-  } catch (error) {
-    console.error('🔥 INLINE WORKER: Failed to create blob URL:', error);
-    // Return a data URL as fallback
-    return 'data:application/javascript;base64,' + btoa(workerScript);
-  }
-};
-
-// ULTIMATE NUCLEAR APPROACH: Multiple attack vectors
-if (typeof window !== 'undefined') {
-  
-  // Attack Vector 1: MAXIMUM NETWORK INTERCEPTION - Block ALL CDN sources
-  const originalFetch = window.fetch;
-  window.fetch = function(...args) {
-    const url = args[0]?.toString() || '';
+    pdfjsLib = await import('pdfjs-dist');
     
-    // COMPREHENSIVE CDN BLOCKING - catch all possible PDF.js worker sources
-    const blockedPatterns = [
-      'pdf.worker',
-      'pdfjs-dist',
-      'cdnjs.cloudflare.com',
-      'unpkg.com',
-      'jsdelivr.net',
-      'jspm.dev',
-      'skypack.dev',
-      'esm.sh',
-      'cdn.pika.dev',
-      'bunny.net',
-      'staticaly.com',
-      'gitcdn.xyz',
-      'rawgit.com',
-      'cdn.rawgit.com',
-      'maxcdn.bootstrapcdn.com',
-      'ajax.googleapis.com'
-    ];
-    
-    const isBlocked = blockedPatterns.some(pattern => url.includes(pattern));
-    
-    if (isBlocked && (url.includes('pdf') || url.includes('worker'))) {
-      console.log('🚫 COMPREHENSIVE BLOCK: Intercepted PDF.js CDN request:', url);
-      
-      // Return a fake successful response to prevent errors
-      return Promise.resolve(new Response('console.log("PDF.js worker blocked by nuclear option");', {
-        status: 200,
-        statusText: 'OK',
-        headers: { 'Content-Type': 'application/javascript' }
-      }));
+    // Disable workers completely for compatibility
+    if (pdfjsLib.GlobalWorkerOptions) {
+      pdfjsLib.GlobalWorkerOptions.workerSrc = null;
     }
     
-    // Allow all other requests
-    return originalFetch.apply(this, args);
-  };
-  
-  // Attack Vector 2: Create inline worker and force it
-  try {
-    const inlineWorkerUrl = createInlineWorker();
-    pdfjsLib.GlobalWorkerOptions.workerSrc = inlineWorkerUrl;
-    console.log('🎯 ATTACK VECTOR 2: Inline worker set:', inlineWorkerUrl);
+    console.log('✅ PDF.js initialized successfully');
+    return pdfjsLib;
   } catch (error) {
-    console.warn('🎯 ATTACK VECTOR 2 FAILED:', error);
+    console.error('❌ Failed to initialize PDF.js:', error);
+    throw new Error('PDF.js initialization failed');
   }
-  
-  // Attack Vector 3: Monkey patch getDocument (with proper property override)
-  try {
-    const originalGetDocument = pdfjsLib.getDocument;
-    
-    // Use Object.defineProperty to override readonly property
-    Object.defineProperty(pdfjsLib, 'getDocument', {
-      value: function(src: any, options = {}) {
-        console.log('🔧 ATTACK VECTOR 3: Intercepting getDocument call');
-        
-        const safeOptions = {
-          ...options,
-          useWorkerFetch: false,
-          disableWorker: true,
-          isEvalSupported: false,
-          verbosity: 0
-        };
-        
-        return originalGetDocument.call(this, src, safeOptions);
-      },
-      writable: true,
-      configurable: true
-    });
-    
-    console.log('🔧 ATTACK VECTOR 3: getDocument monkey patched');
-  } catch (error) {
-    console.warn('🔧 ATTACK VECTOR 3 FAILED:', error);
-  }
-  
-  // Attack Vector 4: Override Worker constructor (simplified approach)
-  try {
-    const OriginalWorker = window.Worker;
-    
-    // Use Object.defineProperty to replace Worker properly
-    Object.defineProperty(window, 'Worker', {
-      value: class extends OriginalWorker {
-        constructor(scriptURL: string | URL, options?: WorkerOptions) {
-          console.log('🏭 ATTACK VECTOR 4: Worker creation intercepted:', scriptURL);
-          
-          // If it's trying to create a PDF.js worker, use our inline worker instead
-          const urlString = scriptURL.toString();
-          if (urlString.includes('pdf.worker') || urlString.includes('cdnjs')) {
-            console.log('🏭 ATTACK VECTOR 4: Redirecting PDF.js worker to inline worker');
-            const inlineWorkerUrl = createInlineWorker();
-            super(inlineWorkerUrl, options);
-          } else {
-            // For other workers, use original URL
-            super(scriptURL, options);
-          }
-        }
-      },
-      writable: true,
-      configurable: true
-    });
-    
-    console.log('🏭 ATTACK VECTOR 4: Worker constructor overridden');
-  } catch (error) {
-    console.warn('🏭 ATTACK VECTOR 4 FAILED:', error);
-  }
-  
-  console.log('💥 NUCLEAR OPTION: All attack vectors deployed');
-}
+};
 
 /**
  * Extract text content from various file types
@@ -227,15 +29,11 @@ if (typeof window !== 'undefined') {
 export class FileTextExtractor {
 
   /**
-   * Extract text from a PDF file (WORKER-FREE VERSION)
+   * Extract text from a PDF file using a simple, reliable approach
    */
   static async extractFromPDF(file: File): Promise<string> {
-    // Store original console functions
-    let originalConsoleError: any;
-    let originalConsoleWarn: any;
-    
     try {
-      console.log('🔥 ENHANCED PDF EXTRACTION for:', file.name, 'Size:', file.size, 'bytes');
+      console.log('📄 Starting PDF extraction for:', file.name, 'Size:', file.size, 'bytes');
       
       // Validate file size (prevent processing extremely large files)
       const maxFileSize = 50 * 1024 * 1024; // 50MB
@@ -243,8 +41,9 @@ export class FileTextExtractor {
         return `[PDF file "${file.name}" is too large (${Math.round(file.size / 1024 / 1024)}MB). Maximum supported size is 50MB. Please try a smaller file or extract text manually.]`;
       }
       
+      // Load the PDF file into an ArrayBuffer
       const arrayBuffer = await file.arrayBuffer();
-      console.log('File loaded into ArrayBuffer, size:', arrayBuffer.byteLength);
+      console.log('📄 File loaded into ArrayBuffer, size:', arrayBuffer.byteLength);
       
       // Check if the file is actually a PDF by looking at the magic number
       const uint8Array = new Uint8Array(arrayBuffer);
@@ -253,56 +52,25 @@ export class FileTextExtractor {
         return `[File "${file.name}" does not appear to be a valid PDF file. Please ensure you've uploaded a PDF document.]`;
       }
       
-      console.log('🔥 Using ENHANCED PDF.js configuration with comprehensive error handling');
+      // Initialize PDF.js
+      const pdfLib = await initializePDFJS();
+      console.log('📄 PDF.js library loaded successfully');
       
-      // Suppress any console errors related to workers during PDF loading
-      originalConsoleError = console.error;
-      originalConsoleWarn = console.warn;
-      
-      console.error = function(...args) {
-        const message = args.join(' ').toLowerCase();
-        if (message.includes('worker') || message.includes('fetch') || message.includes('dynamically imported') || message.includes('module')) {
-          console.log('🔇 SUPPRESSED ERROR:', ...args);
-          return;
-        }
-        originalConsoleError.apply(console, args);
-      };
-      
-      console.warn = function(...args) {
-        const message = args.join(' ').toLowerCase();
-        if (message.includes('worker') || message.includes('fetch') || message.includes('dynamically imported') || message.includes('module')) {
-          console.log('🔇 SUPPRESSED WARNING:', ...args);
-          return;
-        }
-        originalConsoleWarn.apply(console, args);
-      };
-      
-      // Enhanced PDF.js configuration with multiple fallback options
-      const loadingTask = pdfjsLib.getDocument({
+      // Simple PDF.js configuration - minimal and reliable
+      const loadingTask = pdfLib.getDocument({
         data: arrayBuffer,
-        // FORCE disable everything that could trigger external requests
-        useWorkerFetch: false,
-        isEvalSupported: false,
+        verbosity: 0, // Minimize logging
         disableAutoFetch: true,
         disableFontFace: true,
-        verbosity: 0,
-        maxImageSize: -1,
-        // Additional security and compatibility options
-        stopAtErrors: false,
-        password: '', // Try with no password first
-        disableRange: false,
-        disableStream: false
+        useWorkerFetch: false,
+        isEvalSupported: false
       });
-        
+      
+      console.log('📄 Loading PDF document...');
       const pdf = await loadingTask.promise;
+      console.log(`📄 PDF loaded successfully! Pages: ${pdf.numPages}`);
       
-      // Restore console functions now that PDF is loaded
-      console.error = originalConsoleError;
-      console.warn = originalConsoleWarn;
-      
-      console.log(`🔥 ENHANCED APPROACH: PDF loaded successfully! Pages: ${pdf.numPages}`);
-      
-      // Check for password protection
+      // Check for password protection or corruption
       if (pdf.numPages === 0) {
         await pdf.destroy();
         return `[PDF "${file.name}" appears to be password-protected or corrupted. Please ensure the PDF is not encrypted and try again.]`;
@@ -312,13 +80,15 @@ export class FileTextExtractor {
       let totalTextItems = 0;
       let successfulPages = 0;
       
-      // Extract text from each page with enhanced error handling
-      for (let pageNum = 1; pageNum <= Math.min(pdf.numPages, 500); pageNum++) { // Limit to 500 pages for performance
+      // Extract text from each page (limit to 500 pages for performance)
+      const maxPages = Math.min(pdf.numPages, 500);
+      
+      for (let pageNum = 1; pageNum <= maxPages; pageNum++) {
         try {
-          console.log(`Extracting text from page ${pageNum}/${pdf.numPages}`);
+          console.log(`📄 Extracting text from page ${pageNum}/${maxPages}`);
           const page = await pdf.getPage(pageNum);
           
-          // Set a timeout for text extraction
+          // Extract text content with timeout protection
           const timeoutMs = 10000; // 10 seconds per page
           const textContent = await Promise.race([
             page.getTextContent(),
@@ -327,36 +97,30 @@ export class FileTextExtractor {
             )
           ]) as any;
           
-          console.log(`Page ${pageNum} has ${textContent.items.length} text items`);
+          console.log(`📄 Page ${pageNum} has ${textContent.items.length} text items`);
           totalTextItems += textContent.items.length;
           
-          // Enhanced text extraction with better formatting
+          // Extract and clean up text
           const pageText = textContent.items
             .filter((item: any) => item.str && item.str.trim())
-            .map((item: any) => {
-              // Clean up the text and preserve some basic formatting
-              let text = item.str.trim();
-              // Remove excessive whitespace but preserve paragraph breaks
-              text = text.replace(/\s+/g, ' ');
-              return text;
-            })
+            .map((item: any) => item.str.trim())
             .join(' ')
             .replace(/\s+/g, ' ') // Normalize spacing
             .trim();
           
           if (pageText && pageText.length > 0) {
             fullText += `Page ${pageNum}:\n${pageText}\n\n`;
-            console.log(`Page ${pageNum} extracted ${pageText.length} characters`);
+            console.log(`📄 Page ${pageNum} extracted ${pageText.length} characters`);
             successfulPages++;
           } else {
-            console.warn(`Page ${pageNum} contains no readable text`);
+            console.warn(`📄 Page ${pageNum} contains no readable text`);
             fullText += `Page ${pageNum}: [No readable text found on this page]\n\n`;
           }
           
           // Clean up page resources
           page.cleanup();
         } catch (pageError: any) {
-          console.error(`Error extracting text from page ${pageNum}:`, pageError);
+          console.error(`📄 Error extracting text from page ${pageNum}:`, pageError);
           fullText += `Page ${pageNum}: [Error extracting text: ${pageError.message || 'Unknown error'}]\n\n`;
         }
       }
@@ -371,7 +135,7 @@ export class FileTextExtractor {
       
       const result = fullText.trim();
       if (result && successfulPages > 0) {
-        console.log(`🔥 ENHANCED PDF EXTRACTION SUCCESSFUL! Total text length: ${result.length} characters from ${totalTextItems} text items across ${successfulPages} pages`);
+        console.log(`📄 PDF extraction successful! Total text length: ${result.length} characters from ${totalTextItems} text items across ${successfulPages} pages`);
         return result;
       } else {
         const message = `[No readable text content found in PDF "${file.name}". This could mean:
@@ -381,20 +145,12 @@ export class FileTextExtractor {
 - Text is embedded as images rather than selectable text
 
 Total pages processed: ${pdf.numPages}, Text items found: ${totalTextItems}]`;
-        console.warn(`PDF extraction completed but no usable text found. Pages: ${pdf.numPages}, Items: ${totalTextItems}`);
+        console.warn(`📄 PDF extraction completed but no usable text found. Pages: ${pdf.numPages}, Items: ${totalTextItems}`);
         return message;
       }
       
     } catch (error: any) {
-      console.error('🔥 ENHANCED PDF EXTRACTION FAILED:', error);
-      
-      // Restore console functions in case of error
-      try {
-        if (originalConsoleError) console.error = originalConsoleError;
-        if (originalConsoleWarn) console.warn = originalConsoleWarn;
-      } catch (e) {
-        // Ignore restoration errors
-      }
+      console.error('📄 PDF extraction failed:', error);
       
       // Provide more specific error messages based on the error type
       let errorMessage = '';
@@ -418,44 +174,42 @@ Total pages processed: ${pdf.numPages}, Text items found: ${totalTextItems}]`;
    */
   static async extractFromWord(file: File): Promise<string> {
     try {
-      console.log('Starting Word document text extraction for:', file.name, 'Size:', file.size, 'bytes');
-      const arrayBuffer = await file.arrayBuffer();
-      console.log('Word file loaded into ArrayBuffer, size:', arrayBuffer.byteLength);
+      console.log('Extracting text from Word document:', file.name);
       
+      const arrayBuffer = await file.arrayBuffer();
       const result = await mammoth.extractRawText({ arrayBuffer });
       
-      if (result.messages.length > 0) {
-        console.warn('Word extraction warnings:', result.messages);
-      }
-      
-      const content = result.value.trim();
-      if (content) {
-        console.log(`Word extraction completed successfully. Text length: ${content.length} characters`);
-        return content;
+      if (result.value && result.value.trim()) {
+        console.log(`Word extraction successful: ${result.value.length} characters`);
+        return result.value.trim();
       } else {
-        const message = '[No readable text content found in this Word document]';
-        console.warn('Word extraction completed but no text found');
-        return message;
+        return `[Word document "${file.name}" appears to be empty or text extraction failed]`;
       }
-    } catch (error) {
-      console.error('Error extracting Word text:', error);
-      const errorMessage = `[Word document processing failed: ${error.message}]`;
-      return errorMessage;
+    } catch (error: any) {
+      console.error('Word extraction failed:', error);
+      return `[Word document processing failed: ${error.message}]`;
     }
   }
 
   /**
-   * Extract text from a plain text file
+   * Extract text from plain text files
    */
   static async extractFromTextFile(file: File): Promise<string> {
     try {
-      console.log('Starting text file extraction for:', file.name, 'Size:', file.size, 'bytes');
-      const content = await file.text();
-      console.log(`Text file extraction completed. Content length: ${content.length} characters`);
-      return content;
-    } catch (error) {
-      console.error('Error reading text file:', error);
+      console.log('Reading text file:', file.name);
+      
+      const text = await file.text();
+      
+      if (text && text.trim()) {
+        console.log(`Text file read successfully: ${text.length} characters`);
+        return text.trim();
+      } else {
+        return `[Text file "${file.name}" appears to be empty]`;
+      }
+    } catch (error: any) {
+      console.error('Text file reading failed:', error);
       const errorMessage = `[Text file processing failed: ${error.message}]`;
+      console.error(errorMessage);
       return errorMessage;
     }
   }

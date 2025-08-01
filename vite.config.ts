@@ -26,5 +26,13 @@ export default defineConfig(({ mode }) => ({
   define: {
     global: 'globalThis',
     'process.env': {}
+  },
+  build: {
+    rollupOptions: {
+      external: [
+        'pdfjs-dist/build/pdf.worker.min.js',
+        'pdfjs-dist/build/pdf.worker.js'
+      ]
+    }
   }
 }));
