@@ -1,0 +1,105 @@
+import React, { useMemo, useRef, useState } from 'react';
+import { ScribeAIChat } from '@/components/ScribeAIChat';
+import { Button } from '@/components/ui/button';
+import { WorkerType, WORKER_CONFIGS } from '@/types/scribe';
+import { Upload, X, FileText, Image, Code, Settings, MessageSquare, LogOut } from 'lucide-react';
+import { useAuth } from '@/hooks/useAuth';
+
+const getFileIcon = (file: File) => {
+  if (file.type.startsWith('image/')) return <Image className="h-4 w-4" />;
+  if (file.type.includes('text') || file.type.includes('code')) return <Code className="h-4 w-4" />;
+  return <FileText className="h-4 w-4" />;
+};
+
+const formatFileSize = (bytes: number) => {
+  if (bytes === 0) return '0 Bytes';
+  const k = 1024;
+  const sizes = ['Bytes', 'KB', 'MB', 'GB'];
+  const i = Math.floor(Math.log(bytes) / Math.log(k));
+  return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+};
+
+export const MobileScribeChat: React.FC = () => {
+  const { user, signOut } = useAuth();
+  const [activeWorker, setActiveWorker] = useState<WorkerType>('scholarly');
+  const [pendingFiles, setPendingFiles] = useState<File[]>([]);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const workerTabs = useMemo(() => Object.values(WORKER_CONFIGS), []);
+
+  return (
+    <div className="flex flex-col h-screen bg-background">
+      {/* Top App Bar */}
+      <div className="flex items-center justify-between px-4 py-3 border-b bg-card">
+        <div className="flex items-center space-x-2">
+          <MessageSquare className="h-5 w-5" />
+          <div className="text-base font-semibold">Scribe AI</div>
+        </div>
+        <div className="flex items-center space-x-1">
+          <Button variant="ghost" size="icon" className="h-8 w-8">
+            <Settings className="h-4 w-4" />
+          </Button>
+          <Button variant="ghost" size="icon" className="h-8 w-8" onClick={signOut}>
+            <LogOut className="h-4 w-4" />
+          </Button>
+        </div>
+      </div>
+
+      {/* Upload shortcut (worker and citation toggles are rendered near the input by ScribeAIChat on mobile) */}
+      <div className="border-b bg-card px-3 py-2">
+        <div className="flex items-center gap-2">
+          <div className="ml-auto">
+            <Button variant="outline" size="sm" onClick={() => fileInputRef.current?.click()} className="inline-flex items-center">
+              <Upload className="h-4 w-4 mr-2" />
+              Files
+            </Button>
+            <input
+              ref={fileInputRef}
+              type="file"
+              multiple
+              className="hidden"
+              onChange={(e) => {
+                const files = Array.from(e.target.files || []);
+                if (files.length) setPendingFiles((prev) => [...prev, ...files]);
+                if (fileInputRef.current) fileInputRef.current.value = '';
+              }}
+            />
+          </div>
+        </div>
+
+        {pendingFiles.length > 0 && (
+          <div className="mt-2 flex flex-wrap gap-2 p-2 bg-muted/30 rounded-lg">
+            {pendingFiles.map((file, idx) => (
+              <div key={idx} className="flex items-center space-x-2 bg-background rounded-md px-2 py-1 text-xs">
+                {getFileIcon(file)}
+                <span className="truncate max-w-24">{file.name}</span>
+                <span className="text-muted-foreground">({formatFileSize(file.size)})</span>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="h-4 w-4 p-0"
+                  onClick={() => setPendingFiles((prev) => prev.filter((_, i) => i !== idx))}
+                >
+                  <X className="h-3 w-3" />
+                </Button>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {/* Chat Area */}
+      <div className="flex-1 min-h-0">
+        <ScribeAIChat
+          injectedFiles={pendingFiles}
+          onFilesConsumed={() => setPendingFiles([])}
+          selectedWorker={activeWorker}
+        />
+      </div>
+    </div>
+  );
+};
+
+export default MobileScribeChat;
+
+

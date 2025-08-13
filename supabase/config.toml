@@ -1,0 +1,7 @@
+project_id = "unhulaavbftqpvflarqi"
+
+[functions.chat-gemini]
+verify_jwt = false
+
+[functions.chat-deepseek]
+verify_jwt = false
