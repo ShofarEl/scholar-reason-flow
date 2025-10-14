@@ -34,8 +34,14 @@ try {
     const destPath = path.join(distDir, file);
     
     if (fs.statSync(srcPath).isFile()) {
+      // Ensure destination directory exists
+      const destDir = path.dirname(destPath);
+      if (!fs.existsSync(destDir)) {
+        fs.mkdirSync(destDir, { recursive: true });
+      }
+      
       fs.copyFileSync(srcPath, destPath);
-      console.log(`Copied: ${file}`);
+      console.log(`✅ Copied: ${file}`);
     }
   });
 

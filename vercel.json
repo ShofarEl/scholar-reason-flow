@@ -1,5 +1,5 @@
 {
-  "buildCommand": "npm run copy-assets && npm run build:vercel",
+  "buildCommand": "npm run build:vercel",
   "outputDirectory": "dist",
   "framework": "vite",
   "installCommand": "npm ci",

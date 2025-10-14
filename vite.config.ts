@@ -43,6 +43,13 @@ export default defineConfig(({ mode }) => ({
           vendor: ['react', 'react-dom'],
           ui: ['@radix-ui/react-dialog', '@radix-ui/react-dropdown-menu', '@radix-ui/react-select'],
           utils: ['clsx', 'tailwind-merge', 'class-variance-authority']
+        },
+        assetFileNames: (assetInfo) => {
+          // Keep static assets in root for public directory files
+          if (assetInfo.name && /\.(png|jpg|jpeg|gif|svg|ico|woff|woff2|ttf|eot)$/.test(assetInfo.name)) {
+            return '[name].[ext]';
+          }
+          return 'assets/[name]-[hash].[ext]';
         }
       }
     }

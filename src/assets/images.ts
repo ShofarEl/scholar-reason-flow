@@ -1,4 +1,5 @@
 // Image paths that work in both development and production
+// Using direct paths since files are in public directory and should be copied to dist root
 export const images = {
   chatgpt: '/ChatGPT_Image_Oct_14__2025__11_04_53_AM-removebg-preview.png',
   scribeAi: '/ScribeAi-removebg-preview.png',
