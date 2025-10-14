@@ -1,0 +1,488 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* ChatGPT-inspired Design System - Clean, Modern, Professional */
+@layer base {
+  :root {
+    /* ChatGPT Light Theme Colors */
+    --background: 0 0% 100%; /* Pure white background */
+    --foreground: 0 0% 9%; /* Near black text */
+
+    --card: 0 0% 100%; /* White cards */
+    --card-foreground: 0 0% 9%;
+
+    --popover: 0 0% 100%;
+    --popover-foreground: 0 0% 9%;
+
+    --primary: 200 100% 26%; /* Beautiful blue #015382 */
+    --primary-foreground: 0 0% 100%;
+
+    --secondary: 0 0% 96%; /* Light grey */
+    --secondary-foreground: 0 0% 9%;
+
+    --muted: 0 0% 96%; /* Light grey */
+    --muted-foreground: 0 0% 45%; /* Medium grey */
+
+    --accent: 200 100% 26%; /* Beautiful blue accent */
+    --accent-foreground: 0 0% 100%;
+
+    --destructive: 0 84% 60%; /* Red for errors */
+    --destructive-foreground: 0 0% 100%;
+
+    --success: 200 100% 26%; /* Beautiful blue */
+    --warning: 38 92% 50%; /* Amber */
+    --info: 200 100% 26%; /* Blue */
+
+    --border: 0 0% 90%; /* Light border */
+    --input: 0 0% 90%; /* Light grey input border */
+    --ring: 200 100% 26%; /* Focus ring */
+
+    /* Chat-specific colors */
+    --chat-bg: 0 0% 100%; /* White chat background */
+    --chat-sidebar: 0 0% 98%; /* Light grey sidebar */
+    --chat-bubble-user: 200 100% 26%; /* User messages in blue */
+    --chat-bubble-ai: 0 0% 100%; /* AI messages white */
+    --chat-bubble-ai-border: 0 0% 90%; /* AI message border */
+    --chat-input: 0 0% 100%; /* Input background */
+    --chat-input-border: 0 0% 85%; /* Input border */
+    --chat-input-focus: 200 100% 26%; /* Input focus border */
+    --chat-text: 0 0% 9%; /* Input text color */
+    
+    /* Professional gradients */
+    --gradient-primary: linear-gradient(135deg, hsl(200 100% 26%), hsl(200 90% 30%));
+    --gradient-card: linear-gradient(145deg, hsl(0 0% 100%), hsl(0 0% 98%));
+    --gradient-chat: linear-gradient(180deg, hsl(0 0% 100%), hsl(0 0% 98%));
+
+    /* Clean shadows */
+    --shadow-soft: 0 1px 3px hsl(0 0% 0% / 0.1);
+    --shadow-medium: 0 4px 12px hsl(0 0% 0% / 0.1);
+    --shadow-strong: 0 8px 25px hsl(0 0% 0% / 0.15);
+    --shadow-chat: 0 1px 2px hsl(0 0% 0% / 0.05);
+
+    /* Smooth animations */
+    --transition-smooth: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+    --transition-fast: all 0.15s ease-out;
+
+    --radius: 0.5rem;
+
+    /* Sidebar colors */
+    --sidebar-background: 0 0% 98%;
+    --sidebar-foreground: 0 0% 9%;
+    --sidebar-primary: 200 100% 26%;
+    --sidebar-primary-foreground: 0 0% 100%;
+    --sidebar-accent: 0 0% 96%;
+    --sidebar-accent-foreground: 0 0% 9%;
+    --sidebar-border: 0 0% 90%;
+    --sidebar-ring: 200 100% 26%;
+  }
+
+  .dark {
+    /* ChatGPT Dark Theme Colors */
+    --background: 0 0% 9%; /* Very dark grey */
+    --foreground: 0 0% 98%; /* Near white text */
+
+    --card: 0 0% 9%; /* Dark cards */
+    --card-foreground: 0 0% 98%;
+
+    --popover: 0 0% 9%;
+    --popover-foreground: 0 0% 98%;
+
+    --primary: 200 100% 26%; /* Same beautiful blue in dark mode */
+    --primary-foreground: 0 0% 100%;
+
+    --secondary: 0 0% 15%; /* Dark grey */
+    --secondary-foreground: 0 0% 98%;
+
+    --muted: 0 0% 15%; /* Dark grey */
+    --muted-foreground: 0 0% 65%; /* Light grey */
+
+    --accent: 200 100% 26%; /* Same beautiful blue accent */
+    --accent-foreground: 0 0% 100%;
+
+    --destructive: 0 84% 60%; /* Same red */
+    --destructive-foreground: 0 0% 100%;
+
+    --success: 200 100% 26%; /* Same beautiful blue */
+    --warning: 38 92% 50%; /* Same amber */
+    --info: 200 100% 26%; /* Same blue */
+
+    --border: 0 0% 20%; /* Dark border */
+    --input: 0 0% 30%; /* Darker grey input border for visibility */
+    --ring: 200 100% 26%; /* Same focus ring */
+
+    /* Dark mode chat colors */
+    --chat-bg: 0 0% 9%; /* Dark chat background */
+    --chat-sidebar: 0 0% 12%; /* Darker sidebar */
+    --chat-bubble-user: 200 100% 26%; /* User messages still blue */
+    --chat-bubble-ai: 0 0% 15%; /* AI messages dark grey */
+    --chat-bubble-ai-border: 0 0% 20%; /* AI message border */
+    --chat-input: 0 0% 15%; /* Dark input */
+    --chat-input-border: 0 0% 25%; /* Dark input border */
+    --chat-input-focus: 200 100% 26%; /* Input focus border */
+    --chat-text: 0 0% 98%; /* Input text color */
+    
+    /* Dark gradients */
+    --gradient-primary: linear-gradient(135deg, hsl(200 100% 26%), hsl(200 90% 30%));
+    --gradient-card: linear-gradient(145deg, hsl(0 0% 9%), hsl(0 0% 12%));
+    --gradient-chat: linear-gradient(180deg, hsl(0 0% 9%), hsl(0 0% 12%));
+
+    /* Dark shadows */
+    --shadow-soft: 0 1px 3px hsl(0 0% 0% / 0.3);
+    --shadow-medium: 0 4px 12px hsl(0 0% 0% / 0.4);
+    --shadow-strong: 0 8px 25px hsl(0 0% 0% / 0.5);
+    --shadow-chat: 0 1px 2px hsl(0 0% 0% / 0.2);
+    
+    /* Dark sidebar */
+    --sidebar-background: 0 0% 12%;
+    --sidebar-foreground: 0 0% 98%;
+    --sidebar-primary: 200 100% 26%;
+    --sidebar-primary-foreground: 0 0% 100%;
+    --sidebar-accent: 0 0% 15%;
+    --sidebar-accent-foreground: 0 0% 98%;
+    --sidebar-border: 0 0% 20%;
+    --sidebar-ring: 200 100% 26%;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+
+  body {
+    @apply bg-background text-foreground;
+  }
+}
+
+
+/* Enhanced Markdown Styles */
+.markdown-content {
+  @apply text-foreground;
+  line-height: 1.7;
+}
+
+/* Layout Stability for Streaming */
+.chat-message-container {
+  min-height: 2rem;
+  contain: layout style paint;
+  will-change: contents;
+}
+
+.chat-message-content {
+  contain: layout style paint;
+  word-wrap: break-word;
+  overflow-wrap: break-word;
+  will-change: contents;
+}
+
+.streaming-message {
+  contain: layout style paint;
+  min-height: 2rem;
+  transition: none;
+  will-change: contents;
+}
+
+/* Enhanced streaming stability */
+.streaming-content {
+  contain: layout style paint;
+  min-height: 2rem;
+  will-change: contents;
+  transition: none;
+}
+
+.message-content {
+  contain: layout style paint;
+  min-height: 2rem;
+  will-change: contents;
+}
+
+/* Prevent layout shifts during streaming */
+.markdown-content {
+  contain: layout style paint;
+  word-wrap: break-word;
+  overflow-wrap: break-word;
+  min-height: 1.5rem;
+}
+
+.markdown-content * {
+  contain: layout style paint;
+}
+
+.markdown-content p {
+  margin: 0.5rem 0;
+  min-height: 1.2rem;
+}
+
+.markdown-content h1,
+.markdown-content h2,
+.markdown-content h3,
+.markdown-content h4,
+.markdown-content h5,
+.markdown-content h6 {
+  margin: 1rem 0 0.5rem 0;
+  min-height: 1.5rem;
+}
+
+.markdown-content ul,
+.markdown-content ol {
+  margin: 0.5rem 0;
+  padding-left: 1.5rem;
+}
+
+.markdown-content li {
+  margin: 0.25rem 0;
+  min-height: 1.2rem;
+}
+
+.markdown-content pre {
+  margin: 0.5rem 0;
+  min-height: 2rem;
+}
+
+.markdown-content table {
+  margin: 0.5rem 0;
+  min-height: 2rem;
+}
+
+/* Mobile Responsive Chat Styles */
+@media (max-width: 750px) {
+  .chat-mobile-optimized {
+    @apply text-sm;
+  }
+  
+  .chat-mobile-optimized .markdown-content h1 {
+    @apply text-xl font-bold mb-4;
+  }
+  
+  .chat-mobile-optimized .markdown-content h2 {
+    @apply text-lg font-semibold mb-3;
+  }
+  
+  .chat-mobile-optimized .markdown-content h3 {
+    @apply text-base font-semibold mb-2;
+  }
+  
+  .chat-mobile-optimized .markdown-content p {
+    @apply text-sm leading-6;
+  }
+  
+  .chat-mobile-optimized .markdown-content table {
+    @apply text-xs;
+  }
+  
+  .chat-mobile-optimized .markdown-content pre {
+    @apply text-xs p-2;
+  }
+  
+  .chat-mobile-optimized .markdown-content code {
+    @apply text-xs;
+  }
+}
+
+.markdown-content h1,
+.markdown-content h2,
+.markdown-content h3,
+.markdown-content h4,
+.markdown-content h5,
+.markdown-content h6 {
+  @apply scroll-m-20 tracking-tight;
+}
+
+.markdown-content p {
+  @apply leading-7;
+}
+
+.markdown-content [data-rehype-pretty-code-fragment] {
+  @apply my-4;
+}
+
+.markdown-content pre {
+  @apply rounded-lg border bg-muted p-4 overflow-x-auto;
+}
+
+.markdown-content pre code {
+  @apply bg-transparent p-0 text-sm;
+}
+
+/* Math equation styling */
+.markdown-content .katex {
+  @apply text-foreground;
+}
+
+.markdown-content .katex-display {
+  @apply my-6 overflow-x-auto;
+}
+
+/* Table responsive wrapper */
+.markdown-content table {
+  @apply text-sm;
+}
+
+/* Figure placeholder styling */
+.markdown-content .figure-placeholder {
+  @apply my-6 p-4 border-2 border-dashed border-primary/50 rounded-lg bg-primary/5 text-center;
+}
+
+/* Enhanced list styling */
+.markdown-content ul ul,
+.markdown-content ol ol {
+  @apply mt-1 mb-1;
+}
+
+.markdown-content li p {
+  @apply mb-2;
+}
+
+/* Code highlighting improvements */
+.markdown-content pre[class*="language-"] {
+  @apply text-sm leading-relaxed;
+}
+
+/* Blockquote enhancements */
+.markdown-content blockquote p {
+  @apply mb-2 last:mb-0;
+}
+
+/* Enhanced academic content styling */
+.markdown-content {
+  @apply text-foreground leading-relaxed;
+  font-feature-settings: "liga" 1, "kern" 1;
+}
+
+.markdown-content h1 {
+  @apply text-3xl font-bold mb-6 mt-8 text-foreground border-b border-border pb-2;
+  font-weight: 700;
+}
+
+.markdown-content h2 {
+  @apply text-2xl font-semibold mb-4 mt-6 text-foreground border-b border-border pb-1;
+  font-weight: 600;
+}
+
+.markdown-content h3 {
+  @apply text-xl font-semibold mb-3 mt-5 text-foreground;
+  font-weight: 600;
+}
+
+.markdown-content p {
+  @apply mb-4 leading-7 text-foreground;
+  text-align: justify;
+  hyphens: auto;
+}
+
+/* Enhanced table styling */
+.markdown-content table {
+  @apply w-full border-collapse border border-border rounded-lg overflow-hidden;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+}
+
+.markdown-content th {
+  @apply bg-muted/60 px-4 py-3 text-left font-semibold text-sm border-b border-border;
+}
+
+.markdown-content td {
+  @apply border-b border-border/40 px-4 py-3 text-sm;
+}
+
+/* Enhanced code block styling */
+.markdown-content pre {
+  @apply rounded-lg border bg-muted p-4 overflow-x-auto;
+  box-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.1);
+}
+
+/* Enhanced list styling */
+.markdown-content ul, .markdown-content ol {
+  @apply mb-4 ml-6 space-y-1;
+}
+
+.markdown-content li {
+  @apply text-foreground leading-6;
+  margin-bottom: 0.25rem;
+}
+
+/* Enhanced blockquote styling */
+.markdown-content blockquote {
+  @apply border-l-4 border-primary/30 pl-6 py-4 my-6 rounded-r-lg italic bg-muted/20;
+  font-style: italic;
+}
+
+/* Custom Scrollbar Styles */
+.scrollbar-thin {
+  scrollbar-width: thin;
+  scrollbar-color: rgb(209 213 219) transparent;
+}
+
+.scrollbar-thin::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+.scrollbar-thin::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.scrollbar-thin::-webkit-scrollbar-thumb {
+  background-color: rgb(209 213 219);
+  border-radius: 3px;
+  border: 1px solid transparent;
+  background-clip: content-box;
+}
+
+.scrollbar-thin::-webkit-scrollbar-thumb:hover {
+  background-color: rgb(156 163 175);
+}
+
+.dark .scrollbar-thin {
+  scrollbar-color: rgb(75 85 99) transparent;
+}
+
+.dark .scrollbar-thin::-webkit-scrollbar-thumb {
+  background-color: rgb(75 85 99);
+}
+
+.dark .scrollbar-thin::-webkit-scrollbar-thumb:hover {
+  background-color: rgb(107 114 128);
+}
+
+/* Small Screen Height Optimizations */
+@media (max-height: 700px) {
+  .chat-message-container {
+    min-height: 1rem;
+  }
+  
+  .markdown-content {
+    line-height: 1.4;
+  }
+  
+  .markdown-content p {
+    margin: 0.25rem 0;
+  }
+  
+  .markdown-content h1,
+  .markdown-content h2,
+  .markdown-content h3,
+  .markdown-content h4,
+  .markdown-content h5,
+  .markdown-content h6 {
+    margin: 0.5rem 0 0.25rem 0;
+  }
+  
+  .markdown-content ul,
+  .markdown-content ol {
+    margin: 0.25rem 0;
+    padding-left: 1rem;
+  }
+  
+  .markdown-content li {
+    margin: 0.125rem 0;
+  }
+  
+  .markdown-content pre {
+    margin: 0.25rem 0;
+  }
+  
+  .markdown-content table {
+    margin: 0.25rem 0;
+  }
+}

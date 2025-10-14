@@ -1,0 +1,38 @@
+{
+  "buildCommand": "npm run copy-assets && npm run build:vercel",
+  "outputDirectory": "dist",
+  "framework": "vite",
+  "installCommand": "npm ci",
+  "devCommand": "npm run dev",
+  "public": true,
+  "rewrites": [
+    {
+      "source": "/api/(.*)",
+      "destination": "/api/$1"
+    },
+    {
+      "source": "/auth",
+      "destination": "/index.html"
+    },
+    {
+      "source": "/humanizer",
+      "destination": "/index.html"
+    },
+    {
+      "source": "/subscription",
+      "destination": "/index.html"
+    },
+    {
+      "source": "/payment-success",
+      "destination": "/index.html"
+    },
+    {
+      "source": "/reset-password",
+      "destination": "/index.html"
+    },
+    {
+      "source": "/not-found",
+      "destination": "/index.html"
+    }
+  ]
+}
