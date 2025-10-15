@@ -918,18 +918,18 @@ export const ChatGPTInterface: React.FC<ChatGPTInterfaceProps> = ({
 
         {/* Input Area - Elevated */}
         <div
-          className="border-t bg-card/98 backdrop-blur-md p-2 flex-shrink-0 sticky bottom-0 z-20 shadow-2xl border-border/30"
+          className="border-t bg-card/98 backdrop-blur-md p-3 flex-shrink-0 sticky bottom-0 z-20 shadow-2xl border-border/30"
           style={isMobile ? {
-            paddingBottom: `max(env(safe-area-inset-bottom), 8px)`,
-            paddingLeft: `max(env(safe-area-inset-left), 8px)`,
-            paddingRight: `max(env(safe-area-inset-right), 8px)`,
-            paddingTop: '8px'
+            paddingBottom: `max(env(safe-area-inset-bottom), 12px)`,
+            paddingLeft: `max(env(safe-area-inset-left), 12px)`,
+            paddingRight: `max(env(safe-area-inset-right), 12px)`,
+            paddingTop: '12px'
           } : {
-            paddingTop: '12px',
-            paddingBottom: '12px'
+            paddingTop: '16px',
+            paddingBottom: '16px'
           }}
         >
-          <div className="w-full max-w-7xl mx-auto space-y-1">
+          <div className="w-full max-w-7xl mx-auto space-y-2">
             {/* Controls Row */}
             <div className="flex items-center gap-1 flex-wrap text-xs h-8">
               {/* Worker selector */}
@@ -1061,12 +1061,12 @@ export const ChatGPTInterface: React.FC<ChatGPTInterfaceProps> = ({
                       ? `Continue the conversation... (${currentChat.messages.length} messages)`
                       : "Ask ScribeAI anything... Provide detailed instructions for comprehensive analysis and responses."
                   }
-                  className="w-full min-h-[28px] max-h-[80px] resize-y pr-12 py-1 px-2 text-sm rounded-md border border-border/60 bg-background/80 text-foreground placeholder:text-muted-foreground focus:border-primary focus:ring-1 focus:ring-primary/20 transition-all duration-200 shadow-md hover:shadow-lg backdrop-blur-sm"
+                  className="w-full h-10 min-h-[40px] max-h-[40px] resize-none pr-12 py-2 px-3 text-sm rounded-lg border border-border bg-background text-foreground placeholder:text-muted-foreground focus:border-primary focus:ring-1 focus:ring-primary/20 transition-all duration-200"
                   rows={1}
                 />
                 
                 {/* Action Buttons */}
-                <div className="absolute right-1.5 bottom-1.5 flex items-center space-x-1">
+                <div className="absolute right-2 bottom-2 flex items-center space-x-1">
                   <Button
                     variant="ghost"
                     size="sm"

@@ -823,11 +823,11 @@ export const ChatGPTMobileChat: React.FC<ChatGPTMobileChatProps> = ({ injectedFi
 
         {/* Input area */}
         <div
-          className="border-t bg-card/95 backdrop-blur-sm p-2 sticky bottom-0"
-          style={{ paddingBottom: 'max(env(safe-area-inset-bottom), 8px)' }}
+          className="border-t bg-card/95 backdrop-blur-sm p-3 sticky bottom-0"
+          style={{ paddingBottom: 'max(env(safe-area-inset-bottom), 12px)' }}
         >
           {/* Model Toggle */}
-          <div className="mb-1 flex justify-center">
+          <div className="mb-2 flex justify-center">
             <Button 
               variant="outline" 
               size="sm" 
@@ -842,7 +842,7 @@ export const ChatGPTMobileChat: React.FC<ChatGPTMobileChatProps> = ({ injectedFi
 
           {/* Humanizer moved to separate page for better UX on mobile */}
           {!!(pendingFiles.length || (injectedFiles && injectedFiles.length)) && (
-            <div className="mb-1 flex flex-wrap gap-1 p-2 bg-muted/30 rounded-xl">
+            <div className="mb-2 flex flex-wrap gap-1 p-2 bg-muted/30 rounded-xl">
               {pendingFiles.map((file, idx) => (
                 <div key={idx} className="flex items-center space-x-2 bg-background rounded-md px-2 py-1 text-xs shadow-sm">
                   <span>{getFileIcon(file)}</span>
@@ -866,18 +866,18 @@ export const ChatGPTMobileChat: React.FC<ChatGPTMobileChatProps> = ({ injectedFi
                 onChange={(e) => setInput(e.target.value)}
                 onKeyPress={handleKeyPress}
                 placeholder={currentChat && currentChat.messages.length > 0 ? `Message ScribeAI... (${currentChat.messages.length} msgs)` : 'Message ScribeAI...'}
-                className="min-h-[36px] max-h-[80px] resize-none pr-12 text-base rounded-xl border-2 border-border bg-background text-foreground focus:border-primary focus:ring-2 focus:ring-primary/20 placeholder:text-muted-foreground"
+                className="w-full h-10 min-h-[40px] max-h-[40px] resize-none pr-12 py-2 px-3 text-sm rounded-lg border border-border bg-background text-foreground focus:border-primary focus:ring-1 focus:ring-primary/20 placeholder:text-muted-foreground transition-all duration-200"
                 rows={1}
               />
-              <Button variant="ghost" size="sm" onClick={() => fileInputRef.current?.click()} className="absolute right-10 bottom-1.5 h-8 w-8 p-0 hover:bg-muted rounded-lg">
-                <Upload className="h-4 w-4" />
+              <Button variant="ghost" size="sm" onClick={() => fileInputRef.current?.click()} className="absolute right-10 bottom-2 h-6 w-6 p-0 hover:bg-muted rounded-md">
+                <Upload className="h-3 w-3" />
               </Button>
-              <Button 
-                variant="default" 
-                size="sm" 
-                onClick={sendMessage} 
+              <Button
+                variant="default"
+                size="sm"
+                onClick={sendMessage}
                 disabled={(!input.trim() && pendingFiles.length === 0) || isGenerating}
-                className="absolute right-1.5 bottom-1.5 h-8 w-8 p-0 rounded-md"
+                className="absolute right-2 bottom-2 h-6 w-6 p-0 rounded-md"
                 title="Send"
               >
                 <Send className="h-4 w-4" />
