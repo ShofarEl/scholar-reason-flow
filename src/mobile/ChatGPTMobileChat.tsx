@@ -499,7 +499,7 @@ export const ChatGPTMobileChat: React.FC<ChatGPTMobileChatProps> = ({ injectedFi
               <div className="flex items-center space-x-3">
                 <div className="w-10 h-10 rounded-full bg-primary flex items-center justify-center">
                   <img
-                    src="/ChatGPT_Image_Oct_14__2025__11_04_53_AM-removebg-preview.png"
+                    src="/AI.png"
                     alt="ScribeAI"
                     className="w-full h-full object-cover rounded-full"
                   />
@@ -609,7 +609,7 @@ export const ChatGPTMobileChat: React.FC<ChatGPTMobileChatProps> = ({ injectedFi
             </Button>
             <div className="flex items-center space-x-2">
               <img
-                src="/ChatGPT_Image_Oct_14__2025__11_04_53_AM-removebg-preview.png"
+                src="/AI.png"
                 alt="ScribeAI"
                 className="w-7 h-7 rounded-md object-cover"
               />
@@ -743,7 +743,7 @@ export const ChatGPTMobileChat: React.FC<ChatGPTMobileChatProps> = ({ injectedFi
                           <User className="h-4 w-4" />
                         ) : (
                           <img
-                            src="/ChatGPT_Image_Oct_14__2025__11_04_53_AM-removebg-preview.png"
+                            src="/AI.png"
                             alt="AI"
                             className="w-full h-full object-cover"
                           />
@@ -760,9 +760,9 @@ export const ChatGPTMobileChat: React.FC<ChatGPTMobileChatProps> = ({ injectedFi
                           {message.sender === 'user' ? (
                             <p className="whitespace-pre-wrap break-words leading-relaxed text-sm">{content}</p>
                           ) : (
-                            <MarkdownRenderer 
+                            <MarkdownRenderer
                               content={content}
-                              className="prose max-w-none w-full leading-relaxed sm:prose md:prose-lg break-words overflow-x-hidden prose-headings:mt-4 prose-headings:mb-2 prose-p:my-3 prose-pre:whitespace-pre-wrap prose-pre:break-words"
+                              className="prose prose-sm max-w-none prose-headings:scroll-mt-16 prose-headings:font-semibold prose-pre:bg-transparent prose-pre:p-0 prose-code:before:content-[none] prose-code:after:content-[none] prose-li:my-0 prose-ul:my-2 prose-ol:my-2 w-full leading-relaxed break-words overflow-x-hidden"
                               variant="academic"
                             />
                           )}
@@ -795,7 +795,7 @@ export const ChatGPTMobileChat: React.FC<ChatGPTMobileChatProps> = ({ injectedFi
                   <div className="flex items-start space-x-3 w-full">
                     <div className="w-8 h-8 rounded-full bg-gradient-to-br from-primary/20 to-primary/10 border border-primary/20 flex items-center justify-center flex-shrink-0 overflow-hidden ml-2">
                       <img
-                        src="/ChatGPT_Image_Oct_14__2025__11_04_53_AM-removebg-preview.png"
+                        src="/AI.png"
                         alt="AI"
                         className="w-full h-full object-cover"
                       />

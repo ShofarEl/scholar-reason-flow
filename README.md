@@ -2,6 +2,42 @@
 ## Project info
 ai.thinqscribe.com
 
+## Payment System
+
+The payment system uses Paystack for payment processing with both webhook and redirect-based verification for reliability.
+
+### Webhook Setup
+
+1. Deploy the `supabase/functions/paystack-webhook` function to your Supabase project
+2. Set the `PAYSTACK_WEBHOOK_URL` environment variable to your deployed webhook URL
+3. Configure the webhook URL in your Paystack dashboard to receive payment notifications
+
+### Payment Flow
+
+1. User initiates payment through the subscription page
+2. Paystack processes the payment
+3. Paystack sends webhook notification to create/update subscription
+4. User is redirected back to `/payment-success` for verification
+5. Frontend verifies payment and displays success/failure status
+
+### Troubleshooting
+
+If payments aren't reflecting:
+
+1. Check that the webhook function is deployed and accessible
+2. Verify webhook URL is correctly configured in Paystack dashboard
+3. Check Supabase function logs for webhook processing errors
+4. Use the manual refresh button on payment success page if automatic verification fails
+
+### Environment Variables
+
+```env
+# Payment Configuration
+VITE_PAYSTACK_PUBLIC_KEY=pk_test_your_key
+VITE_PAYSTACK_SECRET_KEY=sk_test_your_key
+PAYSTACK_WEBHOOK_URL=https://your-project.supabase.co/functions/v1/paystack-webhook
+```
+
 ## How can I edit this code?
 
 There are several ways of editing your application.

@@ -52,7 +52,7 @@ export const TypingIndicator: React.FC<TypingIndicatorProps> = ({
         currentStageData.color
       )}>
         <img
-          src="/ChatGPT_Image_Oct_14__2025__11_04_53_AM-removebg-preview.png"
+          src="/AI.png"
           alt="AI"
           className="w-full h-full object-cover"
         />

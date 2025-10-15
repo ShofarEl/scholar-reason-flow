@@ -712,7 +712,7 @@ export const ScribeAIChat: React.FC<ScribeAIChatProps> = ({
           <div className="flex items-center justify-between mb-4">
             <div className="flex items-center space-x-3">
               <img 
-                src="/ChatGPT_Image_Oct_14__2025__11_04_53_AM-removebg-preview.png" 
+                src="/AI.png" 
                 alt="ScribeAI" 
                 className="w-8 h-8 rounded-lg"
                 onError={(e) => {
@@ -862,7 +862,7 @@ export const ScribeAIChat: React.FC<ScribeAIChatProps> = ({
             
             <div className="flex items-center space-x-2">
               <img 
-                src="/ChatGPT_Image_Oct_14__2025__11_04_53_AM-removebg-preview.png" 
+                src="/AI.png" 
                 alt="ScribeAI" 
                 className="w-7 h-7 rounded-md"
                 onError={(e) => {
@@ -998,7 +998,7 @@ export const ScribeAIChat: React.FC<ScribeAIChatProps> = ({
                           <User className="h-5 w-5 text-primary-foreground" />
                         ) : (
                           <img
-                            src="/ChatGPT_Image_Oct_14__2025__11_04_53_AM-removebg-preview.png"
+                            src="/AI.png"
                             alt="AI"
                             className="w-full h-full object-cover"
                           />
@@ -1068,7 +1068,7 @@ export const ScribeAIChat: React.FC<ScribeAIChatProps> = ({
                   <div className="flex items-start space-x-3 w-full">
                     <div className="w-10 h-10 rounded-full bg-gradient-to-br from-secondary to-secondary/80 flex items-center justify-center flex-shrink-0 shadow-sm overflow-hidden">
                       <img
-                        src="/ChatGPT_Image_Oct_14__2025__11_04_53_AM-removebg-preview.png"
+                        src="/AI.png"
                         alt="AI"
                         className="w-full h-full object-cover"
                       />

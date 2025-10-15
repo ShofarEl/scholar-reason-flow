@@ -18,7 +18,7 @@ export const ScribeAITabs: React.FC = () => {
         <div className="border-b bg-card/95 backdrop-blur-sm">
           <div className="flex items-center justify-between px-4 py-2">
             <div className="flex items-center space-x-3">
-              <img src="/ChatGPT_Image_Oct_14__2025__11_04_53_AM-removebg-preview.png" alt="ScribeAI" className="w-8 h-8 rounded-lg object-cover" />
+              <img src="/AI.png" alt="ScribeAI" className="w-8 h-8 rounded-lg object-cover" />
               <h1 className="text-lg font-semibold">ScribeAI</h1>
             </div>
             

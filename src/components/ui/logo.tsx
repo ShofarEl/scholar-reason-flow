@@ -20,7 +20,7 @@ export const Logo: React.FC<LogoProps> = ({ size = 'md', className }) => {
       className
     )}>
       <img 
-        src="/ChatGPT_Image_Oct_14__2025__11_04_53_AM-removebg-preview.png" 
+        src="/AI.png" 
         alt="ScribeAI Logo" 
         className="w-full h-full object-contain"
       />

@@ -106,7 +106,7 @@ import {
       const { data } = verificationData;
       const plan = data.metadata.plan as SubscriptionPlan;
       const userId = data.metadata.userId;
-  
+
       console.log('🔧 Processing successful payment:', {
         plan,
         userId,
@@ -114,29 +114,50 @@ import {
         reference: data.reference,
         status: data.status
       });
-  
+
       // Validate user ID format
       if (!userId || typeof userId !== 'string') {
         throw new Error('Invalid user ID in payment metadata');
       }
-  
+
       // Ensure userId is a valid UUID (not the old temporary format)
       if (!userId.includes('-') || userId.startsWith('user_')) {
         throw new Error(`Invalid user ID format: ${userId}. Expected Supabase UUID.`);
       }
-  
-      // Create subscription in database
+
+      // Check if subscription already exists (webhook might have already processed it)
+      const existingSubscription = await SubscriptionService.getCurrentSubscription(userId);
+      if (existingSubscription && existingSubscription.status === 'active') {
+        console.log('✅ Subscription already exists from webhook, returning existing subscription');
+        return existingSubscription;
+      }
+
+      // Check if payment was already processed
+      const allSubscriptions = await SubscriptionService.getAllSubscriptions(userId);
+      const paymentExists = allSubscriptions.some(sub =>
+        sub.payment_history?.some((payment: any) => payment.paystack_reference === data.reference)
+      );
+
+      if (paymentExists) {
+        console.log('✅ Payment already processed, fetching existing subscription');
+        const subscription = await SubscriptionService.getCurrentSubscription(userId);
+        if (subscription) {
+          return subscription;
+        }
+      }
+
+      // Create subscription in database if it doesn't exist
       const endDate = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000); // 30 days
       const amount = data.amount / 100; // Convert from kobo to USD
-      
-      console.log('🔧 Creating subscription with data:', {
+
+      console.log('🔧 Creating new subscription with data:', {
         userId,
         plan,
         endDate: endDate.toISOString(),
         amount,
         reference: data.reference
       });
-  
+
       try {
         const subscription = await SubscriptionService.createSubscription(
           userId,
@@ -147,15 +168,23 @@ import {
           data.id.toString(),
           data.customer?.email
         );
-  
+
         if (!subscription) {
           throw new Error('Failed to create subscription in database');
         }
-  
+
         console.log('✅ Subscription created successfully:', subscription);
         return subscription;
       } catch (error) {
         console.error('❌ Failed to create subscription:', error);
+
+        // Check one more time if subscription was created despite the error
+        const retrySubscription = await SubscriptionService.getCurrentSubscription(userId);
+        if (retrySubscription && retrySubscription.status === 'active') {
+          console.log('✅ Subscription was actually created despite error, returning it');
+          return retrySubscription;
+        }
+
         throw new Error(`Failed to create subscription in database: ${error}`);
       }
     }

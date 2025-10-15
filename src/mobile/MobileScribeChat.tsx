@@ -43,7 +43,7 @@ export const MobileScribeChat: React.FC = () => {
             <Menu className="h-5 w-5" />
           </Button>
           <img
-            src="/ChatGPT_Image_Oct_14__2025__11_04_53_AM-removebg-preview.png"
+            src="/AI.png"
             alt="ScribeAI"
             className="w-6 h-6 rounded object-cover"
           />

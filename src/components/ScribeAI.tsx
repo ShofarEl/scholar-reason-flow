@@ -445,7 +445,7 @@ export const ScribeAI: React.FC = () => {
                 <Menu className="h-4 w-4" />
               </Button>
             )}
-            <img src="/ChatGPT_Image_Oct_14__2025__11_04_53_AM-removebg-preview.png" alt="ScribeAI" className="w-8 h-8 rounded-lg object-cover" />
+            <img src="/AI.png" alt="ScribeAI" className="w-8 h-8 rounded-lg object-cover" />
             <div>
               <h1 className="text-xl font-bold text-foreground">
                 ScribeAI
@@ -507,7 +507,7 @@ export const ScribeAI: React.FC = () => {
           <div className="max-w-4xl mx-auto space-y-4 py-4">
             {conversation.messages.length === 0 ? (
               <div className="text-center py-8 md:py-12">
-                <img src="/ChatGPT_Image_Oct_14__2025__11_04_53_AM-removebg-preview.png" alt="ScribeAI" className="w-16 h-16 mx-auto mb-4 rounded-xl object-cover" />
+                <img src="/AI.png" alt="ScribeAI" className="w-16 h-16 mx-auto mb-4 rounded-xl object-cover" />
                 <h3 className="text-lg font-semibold mb-2">Welcome to ScribeAI</h3>
                 <p className="text-muted-foreground max-w-lg mx-auto mb-4">
                   Your specialized academic AI assistant, fine-tuned exclusively for scholarly research and academic writing.

@@ -22,6 +22,18 @@ export const useSubscription = () => {
     };
 
     loadSubscription();
+
+    // Set up polling for subscription status updates (every 10 seconds)
+    const pollInterval = setInterval(async () => {
+      try {
+        const currentSubscription = await PaymentService.getCurrentSubscription();
+        setSubscription(currentSubscription);
+      } catch (err) {
+        console.error('Polling subscription update error:', err);
+      }
+    }, 10000);
+
+    return () => clearInterval(pollInterval);
   }, []);
 
   // Initialize payment
@@ -59,43 +71,67 @@ export const useSubscription = () => {
   const verifyPayment = useCallback(async (reference: string) => {
     setLoading(true);
     setError(null);
-    
-    try {
-      console.log('🔍 Verifying payment with reference:', reference);
-      
-      const verificationData = await PaymentService.verifyPayment(reference);
-      
-      console.log('🔍 Payment verification result:', verificationData);
-      
-      if (verificationData.data.status === 'success') {
-        console.log('✅ Payment verified successfully, processing...');
-        
-        const newSubscription = await PaymentService.processSuccessfulPayment(verificationData);
-        
-        if (!newSubscription) {
-          throw new Error('Failed to process payment and create subscription');
+
+    let retryCount = 0;
+    const maxRetries = 3;
+    const retryDelay = 2000; // 2 seconds
+
+    while (retryCount < maxRetries) {
+      try {
+        console.log(`🔍 Verifying payment with reference (attempt ${retryCount + 1}/${maxRetries}):`, reference);
+
+        const verificationData = await PaymentService.verifyPayment(reference);
+
+        console.log('🔍 Payment verification result:', verificationData);
+
+        if (verificationData.data.status === 'success') {
+          console.log('✅ Payment verified successfully, processing...');
+
+          // Wait a bit for webhook to process if it's running
+          if (retryCount === 0) {
+            await new Promise(resolve => setTimeout(resolve, 1000));
+          }
+
+          const newSubscription = await PaymentService.processSuccessfulPayment(verificationData);
+
+          if (!newSubscription) {
+            throw new Error('Failed to process payment and create subscription');
+          }
+
+          console.log('✅ New subscription created:', newSubscription);
+
+          // Force refresh subscription data to ensure cache is cleared
+          const refreshedSubscription = await PaymentService.refreshSubscription();
+          console.log('✅ Refreshed subscription data:', refreshedSubscription);
+
+          setSubscription(refreshedSubscription || newSubscription);
+          return refreshedSubscription || newSubscription;
+        } else {
+          console.error('❌ Payment was not successful:', verificationData.data.status);
+          throw new Error(`Payment was not successful: ${verificationData.data.status}`);
         }
-        
-        console.log('✅ New subscription created:', newSubscription);
-        
-        // Force refresh subscription data to ensure cache is cleared
-        const refreshedSubscription = await PaymentService.refreshSubscription();
-        console.log('✅ Refreshed subscription data:', refreshedSubscription);
-        
-        setSubscription(refreshedSubscription || newSubscription);
-        return refreshedSubscription || newSubscription;
-      } else {
-        console.error('❌ Payment was not successful:', verificationData.data.status);
-        throw new Error(`Payment was not successful: ${verificationData.data.status}`);
+      } catch (err) {
+        const errorMessage = err instanceof Error ? err.message : 'Payment verification failed';
+        console.error(`❌ Payment verification error (attempt ${retryCount + 1}):`, err);
+
+        retryCount++;
+
+        // If this is the last attempt or it's a non-retryable error, throw immediately
+        if (retryCount >= maxRetries ||
+            errorMessage.includes('Invalid user ID') ||
+            errorMessage.includes('Payment was not successful')) {
+          setError(errorMessage);
+          throw err;
+        }
+
+        // Wait before retrying
+        console.log(`⏳ Retrying payment verification in ${retryDelay}ms...`);
+        await new Promise(resolve => setTimeout(resolve, retryDelay));
       }
-    } catch (err) {
-      const errorMessage = err instanceof Error ? err.message : 'Payment verification failed';
-      console.error('❌ Payment verification error:', err);
-      setError(errorMessage);
-      throw err;
-    } finally {
-      setLoading(false);
     }
+
+    // This should never be reached due to the throw above, but just in case
+    setLoading(false);
   }, []);
 
   // Update usage
@@ -151,12 +187,15 @@ export const useSubscription = () => {
     hasPremiumPlan,
     refreshSubscription: async () => {
       try {
+        setLoading(true);
         const currentSubscription = await PaymentService.refreshSubscription();
         setSubscription(currentSubscription);
         return currentSubscription;
       } catch (error) {
         console.error('Refresh subscription failed:', error);
         return null;
+      } finally {
+        setLoading(false);
       }
     },
     updateSubscriptionPlan: async (subscriptionId: string, plan: 'basic' | 'premium') => {

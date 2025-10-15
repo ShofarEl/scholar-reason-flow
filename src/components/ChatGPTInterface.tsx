@@ -500,8 +500,25 @@ export const ChatGPTInterface: React.FC<ChatGPTInterfaceProps> = ({
     (chat.title ? chat.title.toLowerCase() : '').includes(searchQuery.toLowerCase())
   );
 
-  const isMobile = window.innerWidth < 768;
+  const [isMobile, setIsMobile] = useState(window.innerWidth < 768);
   const currentChat = getCurrentChat();
+
+  // Handle window resize for mobile detection
+  useEffect(() => {
+    const handleResize = () => {
+      setIsMobile(window.innerWidth < 768);
+    };
+
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
+
+  // Also update mobile detection when auth state changes (in case of layout shifts)
+  useEffect(() => {
+    if (user) {
+      setIsMobile(window.innerWidth < 768);
+    }
+  }, [user]);
 
   return (
     <div className="flex h-screen bg-chat-bg overflow-hidden max-h-screen">
@@ -677,7 +694,7 @@ export const ChatGPTInterface: React.FC<ChatGPTInterfaceProps> = ({
         {/* Mobile Header */}
         {isMobile && (
           <div
-            className="flex items-center justify-between px-4 py-3 border-b bg-card/95 backdrop-blur-sm lg:hidden sticky top-0 z-40 flex-shrink-0"
+            className="flex items-center justify-between px-4 py-3 border-b bg-card/95 backdrop-blur-sm lg:hidden sticky top-0 z-50 flex-shrink-0"
             style={{ 
               paddingTop: `max(env(safe-area-inset-top), 12px)`,
               minHeight: '60px'
@@ -694,7 +711,7 @@ export const ChatGPTInterface: React.FC<ChatGPTInterfaceProps> = ({
             
             <div className="flex items-center space-x-2">
               <img
-                src="/ChatGPT_Image_Oct_14__2025__11_04_53_AM-removebg-preview.png"
+                src="/AI.png"
                 alt="ScribeAI"
                 className="w-7 h-7 rounded-md object-cover"
               />
@@ -799,7 +816,7 @@ export const ChatGPTInterface: React.FC<ChatGPTInterfaceProps> = ({
                         <User className="h-4 w-4 text-white" />
                       ) : (
                         <img
-                          src="/ChatGPT_Image_Oct_14__2025__11_04_53_AM-removebg-preview.png"
+                          src="/AI.png"
                           alt="AI"
                           className="w-full h-full object-cover"
                         />
@@ -819,9 +836,9 @@ export const ChatGPTInterface: React.FC<ChatGPTInterfaceProps> = ({
                             {message.content}
                           </p>
                         ) : (
-                          <MarkdownRenderer 
+                          <MarkdownRenderer
                             content={message.content}
-                            className="prose max-w-none leading-relaxed text-sm break-words overflow-x-hidden" 
+                            className="prose prose-sm max-w-none prose-headings:scroll-mt-16 prose-headings:font-semibold prose-pre:bg-transparent prose-pre:p-0 prose-code:before:content-[none] prose-code:after:content-[none] prose-li:my-0 prose-ul:my-2 prose-ol:my-2 leading-relaxed text-sm break-words overflow-x-hidden"
                           />
                         )}
                         
@@ -865,7 +882,7 @@ export const ChatGPTInterface: React.FC<ChatGPTInterfaceProps> = ({
                     <div className="flex items-start space-x-3 w-full">
                     <div className="w-8 h-8 rounded-full bg-muted flex items-center justify-center flex-shrink-0 overflow-hidden">
                       <img
-                        src="/ChatGPT_Image_Oct_14__2025__11_04_53_AM-removebg-preview.png"
+                        src="/AI.png"
                         alt="AI"
                         className="w-full h-full object-cover"
                       />
@@ -901,20 +918,20 @@ export const ChatGPTInterface: React.FC<ChatGPTInterfaceProps> = ({
 
         {/* Input Area - Elevated */}
         <div
-          className="border-t bg-card/98 backdrop-blur-md p-4 flex-shrink-0 sticky bottom-0 z-20 shadow-2xl border-border/30"
-          style={isMobile ? { 
-            paddingBottom: `max(env(safe-area-inset-bottom), 16px)`,
-            paddingLeft: `max(env(safe-area-inset-left), 16px)`,
-            paddingRight: `max(env(safe-area-inset-right), 16px)`,
-            paddingTop: '16px'
+          className="border-t bg-card/98 backdrop-blur-md p-2 flex-shrink-0 sticky bottom-0 z-20 shadow-2xl border-border/30"
+          style={isMobile ? {
+            paddingBottom: `max(env(safe-area-inset-bottom), 8px)`,
+            paddingLeft: `max(env(safe-area-inset-left), 8px)`,
+            paddingRight: `max(env(safe-area-inset-right), 8px)`,
+            paddingTop: '8px'
           } : {
-            paddingTop: '24px',
-            paddingBottom: '24px'
+            paddingTop: '12px',
+            paddingBottom: '12px'
           }}
         >
-          <div className="w-full max-w-7xl mx-auto space-y-3">
+          <div className="w-full max-w-7xl mx-auto space-y-1">
             {/* Controls Row */}
-            <div className="flex items-center gap-1 flex-wrap text-xs">
+            <div className="flex items-center gap-1 flex-wrap text-xs h-8">
               {/* Worker selector */}
               <Select value={selectedWorker} onValueChange={(value: WorkerType) => {
                 setSelectedWorker(value);
@@ -960,10 +977,10 @@ export const ChatGPTInterface: React.FC<ChatGPTInterfaceProps> = ({
                     onClick={humanizeLastMessage}
                     disabled={!currentChat.messages.length || isHumanizing}
                     title="Humanize the last AI response"
-                    className="h-9 px-3"
+                    className="h-7 px-2 text-xs"
                   >
-                    <Wand2 className="h-4 w-4 sm:mr-2" />
-                    <span className="hidden sm:inline">
+                    <Wand2 className="h-3 w-3 sm:mr-1" />
+                    <span className="hidden sm:inline text-xs">
                       {isHumanizing ? 'Humanizing...' : 'Humanize'}
                     </span>
                   </Button>
@@ -972,10 +989,10 @@ export const ChatGPTInterface: React.FC<ChatGPTInterfaceProps> = ({
                     size="sm"
                     onClick={() => exportChat('docx')}
                     disabled={!currentChat.messages.length}
-                    className="h-9 px-3"
+                    className="h-7 px-2 text-xs"
                   >
-                    <Download className="h-4 w-4 sm:mr-2" />
-                    <span className="hidden sm:inline">Export</span>
+                    <Download className="h-3 w-3 sm:mr-1" />
+                    <span className="hidden sm:inline text-xs">Export</span>
                   </Button>
                 </div>
               )}
@@ -983,13 +1000,13 @@ export const ChatGPTInterface: React.FC<ChatGPTInterfaceProps> = ({
 
             {/* File Upload Areas */}
             {uploadedFiles.length > 0 && (
-              <div className="space-y-3">
-                <div className="flex flex-wrap gap-2 p-3 bg-muted/30 rounded-xl">
+              <div className="space-y-2">
+                <div className="flex flex-wrap gap-2 p-2 bg-muted/30 rounded-xl">
                   <div className="w-full text-xs text-muted-foreground mb-1">Uploaded Files:</div>
                   {uploadedFiles.map((file, index) => (
                     <div
                       key={index}
-                      className="flex items-center space-x-2 bg-background rounded-lg px-3 py-2 text-sm shadow-sm"
+                      className="flex items-center space-x-2 bg-background rounded-lg px-2 py-1 text-sm shadow-sm"
                     >
                       {getFileIcon(file)}
                       <span className="truncate max-w-[120px] sm:max-w-[200px]">{file.name}</span>
@@ -1007,18 +1024,18 @@ export const ChatGPTInterface: React.FC<ChatGPTInterfaceProps> = ({
                     </div>
                   ))}
                 </div>
-                <div className="text-xs text-muted-foreground bg-blue-50 dark:bg-blue-950/20 border border-blue-200 dark:border-blue-800 rounded-lg p-3">
+                <div className="text-xs text-muted-foreground bg-blue-50 dark:bg-blue-950/20 border border-blue-200 dark:border-blue-800 rounded-lg p-2">
                   💡 <strong>Tip:</strong> You can now type instructions above about what you'd like me to analyze in these files. I can read text, PDFs, and analyze images!
                 </div>
               </div>
             )}
 
             {/* Professional Input Area */}
-            <div className="space-y-3 bg-white/5 dark:bg-black/5 rounded-2xl p-4 border border-border/50">
+            <div className="space-y-1 bg-white/5 dark:bg-black/5 rounded-xl p-2 border border-border/50">
               {/* Input Header */}
-              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-                <div className="flex items-center space-x-2">
-                  <h3 className="text-sm font-medium text-foreground">Message ScribeAI</h3>
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1">
+                <div className="flex items-center space-x-1">
+                  <h3 className="text-xs font-medium text-foreground">Message ScribeAI</h3>
                   {uploadedFiles.length > 0 && (
                     <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-primary/10 text-primary border border-primary/20">
                       {uploadedFiles.length} file{uploadedFiles.length > 1 ? 's' : ''} ready
@@ -1041,29 +1058,29 @@ export const ChatGPTInterface: React.FC<ChatGPTInterfaceProps> = ({
                     uploadedFiles.length > 0
                       ? `Describe what you'd like me to analyze in these files... Be specific about what insights, analysis, or information you're looking for.`
                       : currentChat && currentChat.messages.length > 0
-                        ? `Continue the conversation... (${currentChat.messages.length} messages)`
-                        : "Ask ScribeAI anything... Provide detailed instructions for comprehensive analysis and responses."
+                      ? `Continue the conversation... (${currentChat.messages.length} messages)`
+                      : "Ask ScribeAI anything... Provide detailed instructions for comprehensive analysis and responses."
                   }
-                  className="w-full min-h-[100px] max-h-[250px] resize-y pr-24 py-4 px-5 text-base rounded-2xl border-2 border-border/60 bg-background/80 text-foreground placeholder:text-muted-foreground focus:border-primary focus:ring-4 focus:ring-primary/20 transition-all duration-200 shadow-xl hover:shadow-2xl backdrop-blur-sm"
-                  rows={4}
+                  className="w-full min-h-[28px] max-h-[80px] resize-y pr-12 py-1 px-2 text-sm rounded-md border border-border/60 bg-background/80 text-foreground placeholder:text-muted-foreground focus:border-primary focus:ring-1 focus:ring-primary/20 transition-all duration-200 shadow-md hover:shadow-lg backdrop-blur-sm"
+                  rows={1}
                 />
                 
                 {/* Action Buttons */}
-                <div className="absolute right-4 bottom-4 flex items-center space-x-3">
+                <div className="absolute right-1.5 bottom-1.5 flex items-center space-x-1">
                   <Button
                     variant="ghost"
                     size="sm"
                     onClick={() => fileInputRef.current?.click()}
-                    className="h-10 w-10 p-0 hover:bg-muted/50 rounded-xl text-muted-foreground hover:text-foreground shadow-sm hover:shadow-md transition-all duration-200"
+                    className="h-5 w-5 p-0 hover:bg-muted/50 rounded-sm text-muted-foreground hover:text-foreground shadow-sm hover:shadow-sm transition-all duration-200"
                     title="Upload files"
                   >
-                    <Upload className="h-5 w-5" />
+                    <Upload className="h-2.5 w-2.5" />
                   </Button>
                   <Button
                     onClick={sendMessage}
                     disabled={(!input.trim() && uploadedFiles.length === 0) || isGenerating}
                     size="sm"
-                    className="h-10 px-6 rounded-xl bg-primary hover:bg-primary/90 text-white shadow-lg hover:shadow-xl transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed"
+                    className="h-5 px-2.5 rounded-sm bg-primary hover:bg-primary/90 text-white shadow-sm hover:shadow-md transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed text-xs"
                   >
                     {isGenerating ? (
                       <div className="flex items-center space-x-2">
@@ -1090,11 +1107,11 @@ export const ChatGPTInterface: React.FC<ChatGPTInterfaceProps> = ({
               </div>
 
               {/* Input Footer */}
-              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-xs text-muted-foreground">
-                <div className="flex flex-col sm:flex-row sm:items-center gap-1 sm:gap-4">
-                  <span>Supports: Text, PDF, Images, Documents</span>
-                  <span className="hidden sm:inline">•</span>
-                  <span>AI can analyze visual content</span>
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1 text-xs text-muted-foreground">
+                <div className="flex flex-col sm:flex-row sm:items-center gap-1 sm:gap-1.5">
+                  <span className="text-xs">Supports: Text, PDF, Images, Documents</span>
+                  <span className="hidden sm:inline text-xs">•</span>
+                  <span className="text-xs">AI can analyze visual content</span>
                 </div>
                 <div className="text-left sm:text-right">
                   {input.length > 0 && (

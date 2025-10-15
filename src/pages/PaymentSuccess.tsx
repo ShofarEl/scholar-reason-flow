@@ -2,14 +2,15 @@ import React, { useEffect, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { CheckCircle, AlertCircle, Loader2 } from 'lucide-react';
+import { CheckCircle, AlertCircle, Loader2, RefreshCw } from 'lucide-react';
 import { useSubscription } from '@/hooks/useSubscription';
 
 export const PaymentSuccess: React.FC = () => {
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
-  const { verifyPayment, subscription, loading, error } = useSubscription();
+  const { verifyPayment, subscription, loading, error, refreshSubscription } = useSubscription();
   const [verificationStatus, setVerificationStatus] = useState<'pending' | 'success' | 'failed'>('pending');
+  const [retryCount, setRetryCount] = useState(0);
 
   useEffect(() => {
     const reference = searchParams.get('reference');
@@ -41,6 +42,25 @@ export const PaymentSuccess: React.FC = () => {
     navigate('/subscription');
   };
 
+  const handleManualRefresh = async () => {
+    setVerificationStatus('pending');
+    setRetryCount(prev => prev + 1);
+
+    // Wait a moment for webhook to process
+    await new Promise(resolve => setTimeout(resolve, 2000));
+
+    try {
+      await refreshSubscription();
+      if (subscription) {
+        setVerificationStatus('success');
+      } else {
+        setVerificationStatus('failed');
+      }
+    } catch (error) {
+      setVerificationStatus('failed');
+    }
+  };
+
   if (loading || verificationStatus === 'pending') {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gray-50">
@@ -63,16 +83,36 @@ export const PaymentSuccess: React.FC = () => {
             <AlertCircle className="h-12 w-12 text-red-500 mx-auto mb-4" />
             <h2 className="text-xl font-semibold mb-2 text-red-600">Payment Verification Failed</h2>
             <p className="text-gray-600 mb-6">
-              {error || 'We were unable to verify your payment. Please contact support if you believe this is an error.'}
+              {error || 'We were unable to verify your payment. This might be due to network issues or the payment is still processing.'}
             </p>
             <div className="space-y-3">
+              {retryCount < 3 && (
+                <Button onClick={handleManualRefresh} className="w-full" disabled={loading}>
+                  {loading ? (
+                    <>
+                      <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                      Checking...
+                    </>
+                  ) : (
+                    <>
+                      <RefreshCw className="h-4 w-4 mr-2" />
+                      Check Again
+                    </>
+                  )}
+                </Button>
+              )}
               <Button onClick={handleContinue} className="w-full">
                 Return to Home
               </Button>
               <Button variant="outline" onClick={() => navigate('/subscription')} className="w-full">
-                Try Again
+                View Subscription Status
               </Button>
             </div>
+            {retryCount > 0 && (
+              <p className="text-xs text-gray-500 mt-4">
+                Retry attempts: {retryCount}/3
+              </p>
+            )}
           </CardContent>
         </Card>
       </div>
