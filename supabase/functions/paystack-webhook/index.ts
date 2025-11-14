@@ -150,12 +150,12 @@ async function handleSuccessfulCharge(supabaseClient: any, chargeData: any) {
       .from('payment_history')
       .insert({
         subscription_id: subscription.id,
-        user_id: userId,
         paystack_reference: chargeData.reference,
         paystack_id: chargeData.id.toString(),
         amount: amountNaira,
         currency: chargeData.currency || 'NGN',
         status: 'success',
+        plan: plan,
         customer_email: chargeData.customer?.email,
         paid_at: chargeData.paid_at || new Date().toISOString()
       })

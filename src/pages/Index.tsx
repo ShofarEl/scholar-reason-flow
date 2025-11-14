@@ -13,9 +13,39 @@ const Index = () => {
 
   useEffect(() => {
     console.log('Index page - loading:', loading, 'isAuthenticated:', isAuthenticated);
+    
+    // Only redirect if we're sure the user is not authenticated
+    // Add extra checks to prevent redirects during token refresh
     if (!loading && !isAuthenticated) {
-      console.log('User not authenticated, redirecting to auth');
-      navigate('/auth');
+      const checkAndRedirect = async () => {
+        try {
+          // Check localStorage for existing session tokens
+          // This prevents redirects during token refresh operations
+          const keys = Object.keys(localStorage);
+          const hasAuthToken = keys.some(key => 
+            key.includes('supabase') && key.includes('auth-token')
+          );
+          
+          if (hasAuthToken) {
+            console.log('Auth token found in localStorage, waiting for session restoration');
+            return; // Don't redirect if there's a stored session
+          }
+        } catch (error) {
+          console.error('Error checking localStorage:', error);
+        }
+        
+        // Final check: verify authentication state hasn't changed
+        if (!isAuthenticated) {
+          console.log('User not authenticated, redirecting to auth');
+          navigate('/auth');
+        }
+      };
+      
+      // Add a delay to avoid redirecting during token refresh
+      // This is especially important during AI streaming operations
+      const timeoutId = setTimeout(checkAndRedirect, 300);
+      
+      return () => clearTimeout(timeoutId);
     }
   }, [isAuthenticated, loading, navigate]);
 

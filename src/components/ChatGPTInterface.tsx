@@ -29,12 +29,15 @@ import {
   FileText,
   Image,
   Code,
-  Wand2
+  Wand2,
+  Square,
+  RotateCcw
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { PaymentService } from '@/services/paymentService';
 import { useNavigate } from 'react-router-dom';
 import { images } from '@/assets/images';
+import { useToast } from '@/hooks/use-toast';
 import { 
   Dialog,
   DialogContent,
@@ -59,6 +62,7 @@ export const ChatGPTInterface: React.FC<ChatGPTInterfaceProps> = ({
 }) => {
   const { user, signOut } = useAuth();
   const navigate = useNavigate();
+  const { toast } = useToast();
   const {
     chats,
     currentChatId,
@@ -86,6 +90,8 @@ export const ChatGPTInterface: React.FC<ChatGPTInterfaceProps> = ({
   const [copiedMessageId, setCopiedMessageId] = useState<string | null>(null);
   const [showUpgradePrompt, setShowUpgradePrompt] = useState(false);
   const [showSignOutDialog, setShowSignOutDialog] = useState(false);
+  const [canStop, setCanStop] = useState(false);
+  const [lastFailedMessage, setLastFailedMessage] = useState<{id: string, content: string, chatId: string} | null>(null);
   
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const streamingTimeoutRef = useRef<NodeJS.Timeout>();
@@ -96,6 +102,7 @@ export const ChatGPTInterface: React.FC<ChatGPTInterfaceProps> = ({
   // Optimized streaming update
   const streamingMessageIdRef = useRef<string | null>(null);
   const streamingChatIdRef = useRef<string | null>(null);
+  const abortControllerRef = useRef<AbortController | null>(null);
 
   const updateStreamingContent = useCallback((content: string) => {
     if (streamingTimeoutRef.current) {
@@ -116,6 +123,62 @@ export const ChatGPTInterface: React.FC<ChatGPTInterfaceProps> = ({
       }
     }, 25);
   }, [updateMessage, isUserAtBottom]);
+
+  const stopGeneration = useCallback(() => {
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort();
+    }
+    
+    // Immediately clear streaming timeout to prevent further updates
+    if (streamingTimeoutRef.current) {
+      clearTimeout(streamingTimeoutRef.current);
+      streamingTimeoutRef.current = undefined;
+    }
+    
+    // Finalize the current streaming message with partial content
+    const chatId = streamingChatIdRef.current;
+    const messageId = streamingMessageIdRef.current;
+    const partialContent = streamingContent;
+    
+    if (chatId && messageId && partialContent) {
+      updateMessage(chatId, messageId, { 
+        content: partialContent + '\n\n*[Response stopped by user]*', 
+        isStreaming: false 
+      });
+    }
+    
+    // Immediately clean up all state
+    setIsGenerating(false);
+    setCanStop(false);
+    setStreamingContent('');
+    streamingChatIdRef.current = null;
+    streamingMessageIdRef.current = null;
+    abortControllerRef.current = null;
+    
+    // Force scroll to bottom after stopping
+    setTimeout(() => {
+      if (scrollContainerRef.current) {
+        scrollContainerRef.current.scrollTop = scrollContainerRef.current.scrollHeight;
+      } else {
+        messagesEndRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' });
+      }
+    }, 100);
+  }, [updateMessage, streamingContent]);
+
+  const retryLastMessage = useCallback(async () => {
+    if (!lastFailedMessage) return;
+    
+    const { content: originalContent } = lastFailedMessage;
+    
+    // Set the input to the original content and send it again
+    setInput(originalContent);
+    setLastFailedMessage(null);
+    
+    // Trigger a new send
+    setTimeout(() => {
+      sendMessage();
+    }, 100);
+  }, [lastFailedMessage]);
   
   const fileInputRef = useRef<HTMLInputElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -154,9 +217,9 @@ export const ChatGPTInterface: React.FC<ChatGPTInterfaceProps> = ({
   // Auto-resize textarea
   useEffect(() => {
     if (textareaRef.current) {
-      textareaRef.current.style.height = 'auto';
-      const newHeight = Math.min(textareaRef.current.scrollHeight, 350); // Max 350px height
-      textareaRef.current.style.height = `${Math.max(newHeight, 140)}px`; // Min 140px height
+      // Keep a fixed single-line height; allow horizontal scrolling for overflow
+      const fixedHeight = 36;
+      textareaRef.current.style.height = `${fixedHeight}px`;
     }
   }, [input]);
 
@@ -232,6 +295,10 @@ export const ChatGPTInterface: React.FC<ChatGPTInterfaceProps> = ({
     if (!input.trim() && allFiles.length === 0) {
       return;
     }
+
+    // Create abort controller for this request
+    const abortController = new AbortController();
+    abortControllerRef.current = abortController;
     
     // Ensure there is a current chat, create one if needed
     let currentChat = getCurrentChat();
@@ -248,7 +315,7 @@ export const ChatGPTInterface: React.FC<ChatGPTInterfaceProps> = ({
     } else {
       chatId = currentChat.id;
     }
-  
+
     // Create and add user message
     const userMessage: ScribeMessage = {
       id: crypto.randomUUID(),
@@ -257,7 +324,7 @@ export const ChatGPTInterface: React.FC<ChatGPTInterfaceProps> = ({
       timestamp: new Date(),
       worker: selectedWorker
     };
-  
+
     await addMessageToChat(chatId, userMessage);
     
     // Clear input immediately for better UX
@@ -265,6 +332,7 @@ export const ChatGPTInterface: React.FC<ChatGPTInterfaceProps> = ({
     setUploadedFiles([]);
     setIsGenerating(true);
     setStreamingContent('');
+    setCanStop(true);
   
     // Create placeholder assistant message for streaming
     const placeholderId = crypto.randomUUID();
@@ -330,7 +398,8 @@ export const ChatGPTInterface: React.FC<ChatGPTInterfaceProps> = ({
           (chunk) => {
             assistantContent += chunk;
             updateStreamingContent(assistantContent);
-          }
+          },
+          abortController.signal
         );
         
         assistantContent = response.content;
@@ -349,7 +418,8 @@ export const ChatGPTInterface: React.FC<ChatGPTInterfaceProps> = ({
           (chunk) => {
             assistantContent += chunk;
             updateStreamingContent(assistantContent);
-          }
+          },
+          abortController.signal
         );
         
         assistantContent = response.content;
@@ -373,6 +443,12 @@ export const ChatGPTInterface: React.FC<ChatGPTInterfaceProps> = ({
       }
   
     } catch (error) {
+      // Check if request was aborted (user stopped)
+      if (abortController.signal.aborted) {
+        console.log('Request was aborted by user');
+        return;
+      }
+
       console.error('Error sending message:', error);
       
       const errorText = (error instanceof Error && error.message)
@@ -382,18 +458,25 @@ export const ChatGPTInterface: React.FC<ChatGPTInterfaceProps> = ({
       if (typeof errorText === 'string' && errorText.toLowerCase().includes('free trial')) {
         setShowUpgradePrompt(true);
       }
+
+      // Store the failed message for retry functionality
+      setLastFailedMessage({
+        id: userMessage.id,
+        content: userMessage.content,
+        chatId: chatId
+      });
       
       // Update the placeholder with error message
       if (streamingChatIdRef.current && streamingMessageIdRef.current) {
         await updateMessage(streamingChatIdRef.current, streamingMessageIdRef.current, { 
-          content: errorText, 
+          content: errorText + '\n\n*[Click retry to try again]*', 
           isStreaming: false 
         });
       } else {
         const errorMessage: ScribeMessage = {
           id: crypto.randomUUID(),
           sender: 'assistant',
-          content: errorText,
+          content: errorText + '\n\n*[Click retry to try again]*',
           worker: selectedWorker,
           timestamp: new Date()
         };
@@ -402,6 +485,7 @@ export const ChatGPTInterface: React.FC<ChatGPTInterfaceProps> = ({
     } finally {
       setIsGenerating(false);
       setStreamingContent('');
+      setCanStop(false);
       
       if (streamingTimeoutRef.current) {
         clearTimeout(streamingTimeoutRef.current);
@@ -409,6 +493,7 @@ export const ChatGPTInterface: React.FC<ChatGPTInterfaceProps> = ({
       
       streamingChatIdRef.current = null;
       streamingMessageIdRef.current = null;
+      abortControllerRef.current = null;
     }
   };
   
@@ -460,10 +545,49 @@ export const ChatGPTInterface: React.FC<ChatGPTInterfaceProps> = ({
 
   const humanizeLastMessage = async () => {
     const currentChat = getCurrentChat();
-    if (!currentChat || currentChat.messages.length === 0) return;
+    if (!currentChat || currentChat.messages.length === 0) {
+      toast({
+        title: "No message to humanize",
+        description: "Please send a message first before using the humanizer.",
+        variant: "destructive"
+      });
+      return;
+    }
     
     const lastMessage = currentChat.messages[currentChat.messages.length - 1];
-    if (lastMessage.sender !== 'assistant') return;
+    if (lastMessage.sender !== 'assistant') {
+      toast({
+        title: "Cannot humanize user message",
+        description: "Only AI assistant messages can be humanized.",
+        variant: "destructive"
+      });
+      return;
+    }
+
+    // Check subscription and word limits before proceeding
+    const wordsToUse = lastMessage.content.split(/\s+/).filter(Boolean).length;
+    
+    try {
+      // Check if user can use humanizer
+      const canUse = await PaymentService.canUseHumanizer(user?.id, wordsToUse);
+      if (!canUse) {
+        const blockReason = await PaymentService.getHumanizerAccessBlockReason(user?.id, wordsToUse);
+        toast({
+          title: "Humanization not available",
+          description: blockReason,
+          variant: "destructive"
+        });
+        return;
+      }
+    } catch (error) {
+      console.error('Error checking humanizer access:', error);
+      toast({
+        title: "Access check failed",
+        description: "Unable to verify humanizer access. Please try again.",
+        variant: "destructive"
+      });
+      return;
+    }
     
     setIsHumanizing(true);
     
@@ -488,9 +612,43 @@ export const ChatGPTInterface: React.FC<ChatGPTInterfaceProps> = ({
           content: finalContent,
           isHumanized: true
         });
+        
+        toast({
+          title: "Message humanized successfully",
+          description: "The AI response has been made more natural and human-like.",
+        });
+      } else {
+        toast({
+          title: "Humanization failed",
+          description: response.message || "Failed to humanize the message. Please try again.",
+          variant: "destructive"
+        });
       }
     } catch (error) {
       console.error('Humanization error:', error);
+      
+      // Handle specific error messages
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
+      
+      if (errorMessage.includes('Premium plan') || errorMessage.includes('subscription')) {
+        toast({
+          title: "Premium Required",
+          description: "Humanizer is available on the Premium plan. Please subscribe to unlock this feature.",
+          variant: "destructive"
+        });
+      } else if (errorMessage.includes('word limit') || errorMessage.includes('limit reached')) {
+        toast({
+          title: "Word Limit Reached",
+          description: "You've reached your humanizer word limit. Please wait for renewal or upgrade your plan.",
+          variant: "destructive"
+        });
+      } else {
+        toast({
+          title: "Humanization Error",
+          description: errorMessage || "An error occurred while humanizing the message. Please try again.",
+          variant: "destructive"
+        });
+      }
     } finally {
       setIsHumanizing(false);
     }
@@ -838,28 +996,43 @@ export const ChatGPTInterface: React.FC<ChatGPTInterfaceProps> = ({
                         ) : (
                           <MarkdownRenderer
                             content={message.content}
-                            className="prose prose-sm max-w-none prose-headings:scroll-mt-16 prose-headings:font-semibold prose-pre:bg-transparent prose-pre:p-0 prose-code:before:content-[none] prose-code:after:content-[none] prose-li:my-0 prose-ul:my-2 prose-ol:my-2 leading-relaxed text-sm break-words overflow-x-hidden"
+                            className="prose prose-sm max-w-none prose-headings:scroll-mt-16 prose-headings:font-bold prose-pre:bg-transparent prose-pre:p-0 prose-code:before:content-[none] prose-code:after:content-[none] prose-li:my-0 prose-ul:my-2 prose-ol:my-2 leading-relaxed text-sm break-words overflow-x-hidden"
                           />
                         )}
                         
-                        {/* Copy Button */}
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => copyMessageContent(message.content, message.id)}
-                          className={cn(
-                            "absolute top-2 right-2 h-8 w-8 p-0 opacity-0 group-hover:opacity-100 transition-opacity",
-                            message.sender === 'user' 
-                              ? 'text-white hover:bg-white/20' 
-                              : 'text-muted-foreground hover:bg-muted/50'
+                        {/* Action Buttons */}
+                        <div className="absolute top-2 right-2 flex space-x-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                          {/* Retry button for failed messages */}
+                          {message.sender === 'assistant' && message.content.includes('[Click retry to try again]') && (
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={retryLastMessage}
+                              className="h-8 w-8 p-0 text-orange-600 hover:bg-orange-50 hover:text-orange-700"
+                              title="Retry this message"
+                            >
+                              <RotateCcw className="h-4 w-4" />
+                            </Button>
                           )}
-                        >
-                          {copiedMessageId === message.id ? (
-                            <Check className="h-4 w-4" />
-                          ) : (
-                            <Copy className="h-4 w-4" />
-                          )}
-                        </Button>
+                          {/* Copy button */}
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => copyMessageContent(message.content, message.id)}
+                            className={cn(
+                              "h-8 w-8 p-0",
+                              message.sender === 'user' 
+                                ? 'text-white hover:bg-white/20' 
+                                : 'text-muted-foreground hover:bg-muted/50'
+                            )}
+                          >
+                            {copiedMessageId === message.id ? (
+                              <Check className="h-4 w-4" />
+                            ) : (
+                              <Copy className="h-4 w-4" />
+                            )}
+                          </Button>
+                        </div>
                       </div>
                       
                       {/* Message Metadata - Clean and Professional */}
@@ -890,13 +1063,26 @@ export const ChatGPTInterface: React.FC<ChatGPTInterfaceProps> = ({
                     
                     <div className="flex flex-col space-y-2 min-w-0 flex-1">
                       <div className="rounded-2xl bg-chat-bubble-ai px-4 py-3">
-                        <div className="flex items-center space-x-3">
-                          <div className="flex space-x-1">
-                            <div className="w-2 h-2 bg-primary rounded-full animate-bounce" style={{ animationDelay: '0ms' }}></div>
-                            <div className="w-2 h-2 bg-primary rounded-full animate-bounce" style={{ animationDelay: '150ms' }}></div>
-                            <div className="w-2 h-2 bg-primary rounded-full animate-bounce" style={{ animationDelay: '300ms' }}></div>
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center space-x-3">
+                            <div className="flex space-x-1">
+                              <div className="w-2 h-2 bg-primary rounded-full animate-bounce" style={{ animationDelay: '0ms' }}></div>
+                              <div className="w-2 h-2 bg-primary rounded-full animate-bounce" style={{ animationDelay: '150ms' }}></div>
+                              <div className="w-2 h-2 bg-primary rounded-full animate-bounce" style={{ animationDelay: '300ms' }}></div>
+                            </div>
+                            <span className="text-sm text-muted-foreground">AI is thinking...</span>
                           </div>
-                          <span className="text-sm text-muted-foreground">AI is thinking...</span>
+                          {canStop && (
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={stopGeneration}
+                              className="h-8 w-8 p-0 text-red-600 hover:bg-red-50 hover:text-red-700"
+                              title="Stop generating"
+                            >
+                              <Square className="h-4 w-4" />
+                            </Button>
+                          )}
                         </div>
                       </div>
                       
@@ -918,15 +1104,17 @@ export const ChatGPTInterface: React.FC<ChatGPTInterfaceProps> = ({
 
         {/* Input Area - Elevated */}
         <div
-          className="border-t bg-card/98 backdrop-blur-md p-2 flex-shrink-0 sticky bottom-0 z-20 shadow-2xl border-border/30"
+          className="border-t bg-card p-2 flex-shrink-0 sticky z-20 border-border/30"
           style={isMobile ? {
+            bottom: '80px',
             paddingBottom: `max(env(safe-area-inset-bottom), 8px)`,
             paddingLeft: `max(env(safe-area-inset-left), 8px)`,
             paddingRight: `max(env(safe-area-inset-right), 8px)`,
             paddingTop: '8px'
           } : {
-            paddingTop: '12px',
-            paddingBottom: '12px'
+            bottom: '80px',
+            paddingTop: '8px',
+            paddingBottom: '8px'
           }}
         >
           <div className="w-full max-w-7xl mx-auto space-y-1">
@@ -998,40 +1186,8 @@ export const ChatGPTInterface: React.FC<ChatGPTInterfaceProps> = ({
               )}
             </div>
 
-            {/* File Upload Areas */}
-            {uploadedFiles.length > 0 && (
-              <div className="space-y-2">
-                <div className="flex flex-wrap gap-2 p-2 bg-muted/30 rounded-xl">
-                  <div className="w-full text-xs text-muted-foreground mb-1">Uploaded Files:</div>
-                  {uploadedFiles.map((file, index) => (
-                    <div
-                      key={index}
-                      className="flex items-center space-x-2 bg-background rounded-lg px-2 py-1 text-sm shadow-sm"
-                    >
-                      {getFileIcon(file)}
-                      <span className="truncate max-w-[120px] sm:max-w-[200px]">{file.name}</span>
-                      <span className="text-muted-foreground text-xs">
-                        ({formatFileSize(file.size)})
-                      </span>
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => removeFile(index)}
-                        className="h-6 w-6 p-0 hover:bg-destructive hover:text-destructive-foreground"
-                      >
-                        <X className="h-3 w-3" />
-                      </Button>
-                    </div>
-                  ))}
-                </div>
-                <div className="text-xs text-muted-foreground bg-blue-50 dark:bg-blue-950/20 border border-blue-200 dark:border-blue-800 rounded-lg p-2">
-                  💡 <strong>Tip:</strong> You can now type instructions above about what you'd like me to analyze in these files. I can read text, PDFs, and analyze images!
-                </div>
-              </div>
-            )}
-
             {/* Professional Input Area */}
-            <div className="space-y-1 bg-white/5 dark:bg-black/5 rounded-xl p-2 border border-border/50">
+            <div className="space-y-1 bg-background rounded-xl p-2 border border-border/40">
               {/* Input Header */}
               <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1">
                 <div className="flex items-center space-x-1">
@@ -1061,7 +1217,8 @@ export const ChatGPTInterface: React.FC<ChatGPTInterfaceProps> = ({
                       ? `Continue the conversation... (${currentChat.messages.length} messages)`
                       : "Ask ScribeAI anything... Provide detailed instructions for comprehensive analysis and responses."
                   }
-                  className="w-full min-h-[28px] max-h-[80px] resize-y pr-12 py-1 px-2 text-sm rounded-md border border-border/60 bg-background/80 text-foreground placeholder:text-muted-foreground focus:border-primary focus:ring-1 focus:ring-primary/20 transition-all duration-200 shadow-md hover:shadow-lg backdrop-blur-sm"
+                  wrap="off"
+                  className="w-full h-9 whitespace-nowrap overflow-x-auto overflow-y-hidden resize-none pr-12 py-1.5 px-3 text-sm rounded-lg border border-border bg-background text-foreground placeholder:text-muted-foreground focus:border-primary focus:ring-0 transition-colors"
                   rows={1}
                 />
                 
@@ -1071,20 +1228,28 @@ export const ChatGPTInterface: React.FC<ChatGPTInterfaceProps> = ({
                     variant="ghost"
                     size="sm"
                     onClick={() => fileInputRef.current?.click()}
-                    className="h-5 w-5 p-0 hover:bg-muted/50 rounded-sm text-muted-foreground hover:text-foreground shadow-sm hover:shadow-sm transition-all duration-200"
+                    className="h-7 w-7 p-0 hover:bg-muted/50 rounded-sm text-muted-foreground hover:text-foreground"
                     title="Upload files"
                   >
-                    <Upload className="h-2.5 w-2.5" />
+                    <Upload className="h-4 w-4" />
                   </Button>
                   <Button
-                    onClick={sendMessage}
-                    disabled={(!input.trim() && uploadedFiles.length === 0) || isGenerating}
+                    onClick={canStop ? stopGeneration : sendMessage}
+                    disabled={(!input.trim() && uploadedFiles.length === 0) && !canStop}
                     size="sm"
-                    className="h-5 px-2.5 rounded-sm bg-primary hover:bg-primary/90 text-white shadow-sm hover:shadow-md transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed text-xs"
+                    className={cn(
+                      "h-7 px-3 rounded-sm text-white disabled:opacity-50 disabled:cursor-not-allowed text-xs",
+                      canStop ? "bg-red-600 hover:bg-red-700" : "bg-primary hover:bg-primary/90"
+                    )}
                   >
-                    {isGenerating ? (
+                    {canStop ? (
                       <div className="flex items-center space-x-2">
-                        <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin"></div>
+                        <Square className="h-4 w-4" />
+                        <span className="font-medium">Stop</span>
+                      </div>
+                    ) : isGenerating ? (
+                      <div className="flex items-center space-x-2">
+                        <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
                         <span className="font-medium">Sending...</span>
                       </div>
                     ) : (
@@ -1122,6 +1287,38 @@ export const ChatGPTInterface: React.FC<ChatGPTInterfaceProps> = ({
                 </div>
               </div>
             </div>
+
+            {/* File Upload Areas (moved below input to avoid blocking typing) */}
+            {uploadedFiles.length > 0 && (
+              <div className="space-y-2 mt-2">
+                <div className="flex flex-wrap gap-2 p-2 bg-muted/30 rounded-xl">
+                  <div className="w-full text-xs text-muted-foreground mb-1">Uploaded Files:</div>
+                  {uploadedFiles.map((file, index) => (
+                    <div
+                      key={index}
+                      className="flex items-center space-x-2 bg-background rounded-lg px-2 py-1 text-sm shadow-sm"
+                    >
+                      {getFileIcon(file)}
+                      <span className="truncate max-w-[120px] sm:max-w-[200px]">{file.name}</span>
+                      <span className="text-muted-foreground text-xs">
+                        ({formatFileSize(file.size)})
+                      </span>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => removeFile(index)}
+                        className="h-6 w-6 p-0 hover:bg-destructive hover:text-destructive-foreground"
+                      >
+                        <X className="h-3 w-3" />
+                      </Button>
+                    </div>
+                  ))}
+                </div>
+                <div className="text-xs text-muted-foreground bg-blue-50 dark:bg-blue-950/20 border border-blue-200 dark:border-blue-800 rounded-lg p-2">
+                  💡 <strong>Tip:</strong> You can now type instructions above about what you'd like me to analyze in these files. I can read text, PDFs, and analyze images!
+                </div>
+              </div>
+            )}
           </div>
         </div>
       </div>

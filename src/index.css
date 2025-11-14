@@ -2,6 +2,47 @@
 @tailwind components;
 @tailwind utilities;
 
+/* Mobile viewport fixes to prevent unwanted zooming */
+@layer base {
+  html {
+    /* Prevent zoom on input focus */
+    -webkit-text-size-adjust: 100%;
+    -ms-text-size-adjust: 100%;
+    text-size-adjust: 100%;
+  }
+  
+  body {
+    /* Allow normal scrolling with smooth behavior */
+    overscroll-behavior: contain;
+    -webkit-overflow-scrolling: touch;
+    touch-action: pan-y;
+  }
+  
+  /* Prevent zoom on form inputs */
+  input, textarea, select {
+    font-size: 16px !important;
+    -webkit-appearance: none;
+    -moz-appearance: none;
+    appearance: none;
+    touch-action: manipulation;
+  }
+  
+  /* Prevent zoom on buttons and interactive elements */
+  button, [role="button"] {
+    touch-action: manipulation;
+    -webkit-tap-highlight-color: transparent;
+  }
+  
+  /* Mobile-specific container fixes */
+  .mobile-container {
+    width: 100vw;
+    max-width: 100vw;
+    overflow-x: hidden;
+    overflow-y: auto;
+    touch-action: pan-y;
+  }
+}
+
 /* ChatGPT-inspired Design System - Clean, Modern, Professional */
 @layer base {
   :root {

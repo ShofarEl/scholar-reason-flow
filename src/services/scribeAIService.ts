@@ -19,7 +19,8 @@ export class ScribeAIService {
     message: string,
     worker: WorkerType,
     conversationHistory: Array<{role: 'user' | 'assistant', content: string}> = [],
-    onChunk?: (chunk: string) => void
+    onChunk?: (chunk: string) => void,
+    abortSignal?: AbortSignal
   ): Promise<ScribeAIResponse> {
     // Check subscription before processing
     if (!(await PaymentService.canUseAI())) {
@@ -36,6 +37,9 @@ export class ScribeAIService {
       if (longForm) {
         const words = longForm.minWords;
         enhancedSystemPrompt += `\n\nLong‑form mode: The user intent indicates a long, comprehensive response. Produce cohesive, continuous academic prose of at least ${words} words (more if helpful), with clear structure and sustained analysis.`;
+      } else {
+        // Even for regular queries, encourage longer responses
+        enhancedSystemPrompt += `\n\nProduce comprehensive, detailed responses of at least 2000-3000 words with thorough analysis and examples.`;
       }
       
       console.log(`Sending message to ${worker} worker via Supabase Edge Function`);
@@ -44,8 +48,8 @@ export class ScribeAIService {
       
       // Prefer Sonnet by default; switch to Haiku only on overload/rate-limit
       const primaryModel = CLAUDE_PRIMARY_MODEL === 'sonnet'
-        ? 'claude-3-5-sonnet-20241022'
-        : 'claude-3-5-haiku-20241022';
+        ? 'claude-3-5-sonnet-latest'
+        : 'claude-3-5-haiku-latest';
 
       const requestBody = {
         message,
@@ -54,28 +58,36 @@ export class ScribeAIService {
         worker,
         model: primaryModel, // Primary
         // Hint to backend to allow much longer completions when feasible
-        targetWordCount: longForm?.minWords ?? 2000, // Default to 2000 words minimum
+        targetWordCount: longForm?.minWords ?? 3000, // Default to 3000 words minimum
         allowLongOutputs: true,
-        lengthHint: longForm ? { minWords: longForm.minWords, maxWords: longForm.maxWords } : { minWords: 1500, maxWords: 4000 }
+        lengthHint: longForm ? { minWords: longForm.minWords, maxWords: longForm.maxWords } : { minWords: 2000, maxWords: 6000 }
       };
 
-      // Exponential backoff for transient overloads
+      // Use the new streaming endpoint with abort signal support
       const doRequest = async (modelOverride?: string): Promise<Response> => {
         const maxAttempts = 3;
         let attempt = 0;
         let lastError: any = null;
-        const body = { ...requestBody, model: modelOverride || requestBody.model } as any;
+        const body = { ...requestBody, model: modelOverride || requestBody.model };
+        
         while (attempt < maxAttempts) {
           attempt++;
           try {
-            const resp = await fetch(`${this.SUPABASE_URL}/functions/v1/scribe-ai-service`, {
+            // Check if request was aborted before making the request
+            if (abortSignal?.aborted) {
+              throw new Error('Request aborted');
+            }
+
+            const resp = await fetch(`${this.SUPABASE_URL}/functions/v1/scribe-ai-streaming`, {
               method: 'POST',
               headers: {
                 'Content-Type': 'application/json',
                 'Authorization': `Bearer ${this.SUPABASE_ANON_KEY}`,
               },
               body: JSON.stringify(body),
+              signal: abortSignal
             });
+
             if (resp.status === 529 || resp.status === 429) {
               const delayMs = Math.pow(2, attempt - 1) * 1000;
               console.warn(`ScribeAI service overloaded (status ${resp.status}). Retrying in ${delayMs}ms (attempt ${attempt}/${maxAttempts})`);
@@ -85,19 +97,31 @@ export class ScribeAIService {
             return resp;
           } catch (err) {
             lastError = err;
+            
+            // If aborted, don't retry
+            if (abortSignal?.aborted || err.name === 'AbortError') {
+              throw err;
+            }
+            
             const delayMs = Math.pow(2, attempt - 1) * 1000;
             await new Promise(r => setTimeout(r, delayMs));
           }
         }
         if (lastError) throw lastError;
+        
         // Final attempt without special handling
-        return await fetch(`${this.SUPABASE_URL}/functions/v1/scribe-ai-service`, {
+        if (abortSignal?.aborted) {
+          throw new Error('Request aborted');
+        }
+        
+        return await fetch(`${this.SUPABASE_URL}/functions/v1/scribe-ai-streaming`, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
             'Authorization': `Bearer ${this.SUPABASE_ANON_KEY}`,
           },
           body: JSON.stringify(body),
+          signal: abortSignal
         });
       };
 
@@ -105,8 +129,8 @@ export class ScribeAIService {
 
       if (!response.ok) {
         // If overloaded or rate-limited, try the other Claude 3.5 model first, then AIService
-        if (response.status === 529 || response.status === 429) {
-          const altModel = primaryModel.includes('sonnet') ? 'claude-3-5-haiku-20241022' : 'claude-3-5-sonnet-20241022';
+                if (response.status === 529 || response.status === 429) {
+          const altModel = primaryModel.includes('sonnet') ? 'claude-3-5-haiku-latest' : 'claude-3-5-sonnet-latest';
           console.warn(`ScribeAI overloaded (${response.status}). Attempting alternate Claude model: ${altModel}...`);
           response = await doRequest(altModel);
           if (!response.ok) {
@@ -131,6 +155,13 @@ export class ScribeAIService {
         
         try {
           while (true) {
+            // Check if request was aborted
+            if (abortSignal?.aborted) {
+              console.log('🛑 Request aborted during streaming, stopping...');
+              reader.cancel();
+              throw new Error('Request aborted');
+            }
+
             const { done, value } = await reader.read();
             if (done) break;
             
@@ -238,7 +269,7 @@ export class ScribeAIService {
         // Handle non-streaming response
         const data = await response.json();
         if (data?.error && /overload|rate limit|quota/i.test(String(data.error))) {
-          const altModel = primaryModel.includes('sonnet') ? 'claude-3-5-haiku-20241022' : 'claude-3-5-sonnet-20241022';
+          const altModel = primaryModel.includes('sonnet') ? 'claude-3-5-haiku-latest' : 'claude-3-5-sonnet-latest';
           console.warn(`ScribeAI service reported overload in JSON body. Trying alternate Claude model: ${altModel}...`);
           const retry = await doRequest(altModel);
           if (!retry.ok) {

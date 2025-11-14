@@ -344,7 +344,7 @@ const Auth = () => {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-background via-background/95 to-primary/5 flex items-center justify-center p-4">
+    <div className="min-h-screen bg-gradient-to-br from-background via-background/95 to-primary/5 flex items-center justify-center p-4 touch-manipulation">
       <div className="w-full max-w-5xl grid grid-cols-1 md:grid-cols-2 gap-8 items-center">
         <div className="hidden md:block">
           <div className="relative rounded-3xl border border-white/20 bg-gradient-to-br from-primary/90 to-primary/70 backdrop-blur p-8 shadow-xl overflow-hidden">
@@ -388,7 +388,13 @@ const Auth = () => {
             </CardHeader>
             <CardContent>
               <div className="mb-5">
-                <Button variant="outline" className="w-full" disabled={loading} onClick={() => handleOAuth('google')}>
+                <Button 
+                  variant="outline" 
+                  className="w-full touch-manipulation" 
+                  disabled={loading} 
+                  onClick={() => handleOAuth('google')}
+                  type="button"
+                >
                   <Chrome className="h-4 w-4 mr-2" />
                   Continue with Google
                 </Button>
@@ -405,7 +411,7 @@ const Auth = () => {
                 </Alert>
               )}
 
-              <Tabs defaultValue="signin" className="w-full">
+              <Tabs defaultValue="signup" className="w-full">
                 <TabsList className="grid w-full grid-cols-2 mb-6">
                   <TabsTrigger value="signin" className="data-[state=active]:bg-primary data-[state=active]:text-primary-foreground">Sign In</TabsTrigger>
                   <TabsTrigger value="signup" className="data-[state=active]:bg-primary data-[state=active]:text-primary-foreground">Sign Up</TabsTrigger>

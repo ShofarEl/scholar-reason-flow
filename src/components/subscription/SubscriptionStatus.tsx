@@ -239,13 +239,13 @@ export const SubscriptionStatus: React.FC<SubscriptionStatusProps> = ({
             <span>AI Messages</span>
           </div>
           <span className="text-gray-600">
-            {subscription?.plan === 'basic' ? 100 - remainingAIMessages : 500 - remainingAIMessages} / {subscription?.plan === 'basic' ? 100 : 500}
+            {subscription?.plan === 'basic' ? 30 - remainingAIMessages : 100 - remainingAIMessages} / {subscription?.plan === 'basic' ? 30 : 100}
           </span>
         </div>
         <Progress 
           value={subscription?.plan === 'basic' 
-            ? ((100 - remainingAIMessages) / 100) * 100 
-            : ((500 - remainingAIMessages) / 500) * 100
+            ? ((30 - remainingAIMessages) / 30) * 100 
+            : ((100 - remainingAIMessages) / 100) * 100
           } 
           className="h-3 bg-gray-200 dark:bg-gray-700" 
         />

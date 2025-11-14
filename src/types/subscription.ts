@@ -105,8 +105,8 @@ export const SUBSCRIPTION_PLANS: Record<SubscriptionPlan, SubscriptionPlanConfig
     aiAccess: true,
     humanizerAccess: false,
     humanizerWordLimit: 0,
-    aiMessageLimit: 100,
-    planWordLimit: 60000
+    aiMessageLimit: 30,
+    planWordLimit: 25000
   },
   premium: {
     id: 'premium',
@@ -123,7 +123,7 @@ export const SUBSCRIPTION_PLANS: Record<SubscriptionPlan, SubscriptionPlanConfig
     aiAccess: true,
     humanizerAccess: true,
     humanizerWordLimit: 10000,
-    aiMessageLimit: 500,
-    planWordLimit: 300000
+    aiMessageLimit: 100,
+    planWordLimit: 100000
   }
 };

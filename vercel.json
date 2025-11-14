@@ -33,6 +33,34 @@
     {
       "source": "/not-found",
       "destination": "/index.html"
+    },
+    {
+      "source": "/debug",
+      "destination": "/index.html"
+    },
+    {
+      "source": "/database-test",
+      "destination": "/index.html"
+    },
+    {
+      "source": "/quick-test",
+      "destination": "/index.html"
+    },
+    {
+      "source": "/admin",
+      "destination": "/index.html"
+    },
+    {
+      "source": "/admin-test",
+      "destination": "/index.html"
+    },
+    {
+      "source": "/admin-debug",
+      "destination": "/index.html"
+    },
+    {
+      "source": "/admin-simple",
+      "destination": "/index.html"
     }
   ]
 }

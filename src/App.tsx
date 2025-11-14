@@ -1,16 +1,25 @@
-import React, { useEffect } from 'react';
+import { useEffect } from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import { Toaster } from '@/components/ui/toaster';
 import { ThemeProvider } from '@/components/theme-provider';
+import { AdminNavigation } from '@/components/AdminNavigation';
 import { supabase } from '@/integrations/supabase/client';
 import EmailService from '@/services/emailService';
 import Index from '@/pages/Index';
+import Home from '@/pages/Home';
 import Auth from '@/pages/Auth';
 import ResetPassword from '@/pages/ResetPassword';
 import NotFound from '@/pages/NotFound';
 import HumanizerPage from '@/pages/Humanizer';
 import { PaymentSuccess } from '@/pages/PaymentSuccess';
 import { Subscription } from '@/pages/Subscription';
+import Debug from '@/pages/Debug';
+import DatabaseTest from '@/pages/DatabaseTest';
+import QuickDBTest from '@/pages/QuickDBTest';
+import Admin from '@/pages/Admin';
+import AdminTest from '@/pages/AdminTest';
+import AdminDebug from '@/pages/AdminDebug';
+import AdminSimple from '@/pages/AdminSimple';
 
 function App() {
   useEffect(() => {
@@ -68,14 +77,23 @@ function App() {
       <Router>
         <Routes>
           <Route path="/" element={<Index />} />
+          <Route path="/home" element={<Home />} />
           <Route path="/auth" element={<Auth />} />
           <Route path="/auth/reset-password" element={<ResetPassword />} />
           <Route path="/humanizer" element={<HumanizerPage />} />
           <Route path="/subscription" element={<Subscription />} />
           <Route path="/payment-success" element={<PaymentSuccess />} />
+          <Route path="/debug" element={<Debug />} />
+          <Route path="/database-test" element={<DatabaseTest />} />
+          <Route path="/quick-test" element={<QuickDBTest />} />
+          <Route path="/admin" element={<Admin />} />
+          <Route path="/admin-test" element={<AdminTest />} />
+          <Route path="/admin-debug" element={<AdminDebug />} />
+          <Route path="/admin-simple" element={<AdminSimple />} />
           <Route path="/404" element={<NotFound />} />
           <Route path="*" element={<Navigate to="/404" replace />} />
         </Routes>
+        <AdminNavigation />
         <Toaster />
       </Router>
     </ThemeProvider>

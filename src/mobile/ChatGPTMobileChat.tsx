@@ -13,7 +13,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Badge } from '@/components/ui/badge';
 import { cn } from '@/lib/utils';
 import { 
-  Menu, LogOut, Settings, Upload, X, Plus, Trash2, Download, Bot, User, Copy, Check, Wand2, ChevronDown, Send, CreditCard, MessageSquare
+  Menu, LogOut, Settings, Upload, X, Plus, Trash2, Download, Bot, User, Copy, Check, Wand2, ChevronDown, Send, CreditCard, MessageSquare, Square, RotateCcw
 } from 'lucide-react';
 import { SubscriptionStatus } from '../components/subscription/SubscriptionStatus';
 import { useSubscription } from '@/hooks/useSubscription';
@@ -62,6 +62,8 @@ export const ChatGPTMobileChat: React.FC<ChatGPTMobileChatProps> = ({ injectedFi
   const [modelSheetOpen, setModelSheetOpen] = useState(false);
   const [copiedMessageId, setCopiedMessageId] = useState<string | null>(null);
   const [streamingContent, setStreamingContent] = useState('');
+  const [canStop, setCanStop] = useState(false);
+  const [lastFailedMessage, setLastFailedMessage] = useState<{id: string, content: string, chatId: string} | null>(null);
   // Humanizer (mobile) state
   const [humanizeOpen, setHumanizeOpen] = useState(false);
   const [humanizeInput, setHumanizeInput] = useState('');
@@ -79,6 +81,7 @@ export const ChatGPTMobileChat: React.FC<ChatGPTMobileChatProps> = ({ injectedFi
   const streamingTimeoutRef = useRef<NodeJS.Timeout>();
   const streamingMessageIdRef = useRef<string | null>(null);
   const streamingChatIdRef = useRef<string | null>(null);
+  const abortControllerRef = useRef<AbortController | null>(null);
   
   const [isUserAtBottom, setIsUserAtBottom] = useState(true);
   const [showUpgradePrompt, setShowUpgradePrompt] = useState(false);
@@ -102,6 +105,60 @@ export const ChatGPTMobileChat: React.FC<ChatGPTMobileChatProps> = ({ injectedFi
       scrollContainerRef.current.scrollTop = scrollContainerRef.current.scrollHeight;
     }
   }, [updateMessage, isUserAtBottom]);
+
+  const stopGeneration = useCallback(() => {
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort();
+    }
+    
+    // Immediately clear streaming timeout to prevent further updates
+    if (streamingTimeoutRef.current) {
+      clearTimeout(streamingTimeoutRef.current);
+      streamingTimeoutRef.current = undefined;
+    }
+    
+    // Finalize the current streaming message with partial content
+    const chatId = streamingChatIdRef.current;
+    const messageId = streamingMessageIdRef.current;
+    const partialContent = streamingContent;
+    
+    if (chatId && messageId && partialContent) {
+      updateMessage(chatId, messageId, { 
+        content: partialContent + '\n\n*[Response stopped by user]*', 
+        isStreaming: false 
+      });
+    }
+    
+    // Immediately clean up all state
+    setIsGenerating(false);
+    setCanStop(false);
+    setStreamingContent('');
+    streamingChatIdRef.current = null;
+    streamingMessageIdRef.current = null;
+    abortControllerRef.current = null;
+    
+    // Force scroll to bottom after stopping
+    setTimeout(() => {
+      if (scrollContainerRef.current) {
+        scrollContainerRef.current.scrollTop = scrollContainerRef.current.scrollHeight;
+      }
+    }, 100);
+  }, [updateMessage, streamingContent]);
+
+  const retryLastMessage = useCallback(async () => {
+    if (!lastFailedMessage) return;
+    
+    const { content: originalContent } = lastFailedMessage;
+    
+    // Set the input to the original content and send it again
+    setInput(originalContent);
+    setLastFailedMessage(null);
+    
+    // Trigger a new send
+    setTimeout(() => {
+      sendMessage();
+    }, 100);
+  }, [lastFailedMessage]);
 
   useEffect(() => {
     return () => {
@@ -264,6 +321,10 @@ export const ChatGPTMobileChat: React.FC<ChatGPTMobileChatProps> = ({ injectedFi
     const allFiles: File[] = [...pendingFiles, ...(injectedFiles || [])];
     if (!input.trim() && allFiles.length === 0) return;
 
+    // Create abort controller for this request
+    const abortController = new AbortController();
+    abortControllerRef.current = abortController;
+
     // Ensure there is an active chat; create one if missing
     let chatId = getCurrentChat()?.id || null;
     if (!chatId) {
@@ -283,6 +344,14 @@ export const ChatGPTMobileChat: React.FC<ChatGPTMobileChatProps> = ({ injectedFi
     setPendingFiles([]);
     setIsGenerating(true);
     setStreamingContent('');
+    setCanStop(true);
+    
+    // Auto-scroll to bottom immediately after adding user message
+    setTimeout(() => {
+      if (scrollContainerRef.current) {
+        scrollContainerRef.current.scrollTop = scrollContainerRef.current.scrollHeight;
+      }
+    }, 100);
 
     try {
       let assistantContent = '';
@@ -299,6 +368,13 @@ export const ChatGPTMobileChat: React.FC<ChatGPTMobileChatProps> = ({ injectedFi
       addMessageToChat(chatId, placeholderMessage);
       streamingChatIdRef.current = chatId;
       streamingMessageIdRef.current = placeholderId;
+      
+      // Auto-scroll to bottom after adding placeholder message
+      setTimeout(() => {
+        if (scrollContainerRef.current) {
+          scrollContainerRef.current.scrollTop = scrollContainerRef.current.scrollHeight;
+        }
+      }, 150);
       
       // Get conversation history AFTER adding the placeholder message
       // Add a small delay to ensure state is updated
@@ -335,7 +411,8 @@ export const ChatGPTMobileChat: React.FC<ChatGPTMobileChatProps> = ({ injectedFi
           (chunk) => {
             assistantContent += chunk;
             updateStreamingContent(assistantContent);
-          }
+          },
+          abortController.signal
         );
         assistantContent = response.content;
       } else {
@@ -352,7 +429,8 @@ export const ChatGPTMobileChat: React.FC<ChatGPTMobileChatProps> = ({ injectedFi
           (chunk) => {
             assistantContent += chunk;
             updateStreamingContent(assistantContent);
-          }
+          },
+          abortController.signal
         );
         assistantContent = response.content;
       }
@@ -371,6 +449,13 @@ export const ChatGPTMobileChat: React.FC<ChatGPTMobileChatProps> = ({ injectedFi
           if (!updateResult) {
             console.error('❌ Mobile: Message finalization failed!');
           }
+          
+          // Auto-scroll to bottom after finalizing the message
+          setTimeout(() => {
+            if (scrollContainerRef.current) {
+              scrollContainerRef.current.scrollTop = scrollContainerRef.current.scrollHeight;
+            }
+          }, 100);
         } catch (error) {
           console.error('❌ Mobile: Error during message finalization:', error);
         }
@@ -389,21 +474,39 @@ export const ChatGPTMobileChat: React.FC<ChatGPTMobileChatProps> = ({ injectedFi
         setTrialUsage({ remaining: trialRemaining, limit, used });
       } catch {}
     } catch (error) {
+      // Check if request was aborted (user stopped)
+      if (abortController.signal.aborted) {
+        console.log('Request was aborted by user');
+        return;
+      }
+
       const errChatId = streamingChatIdRef.current;
       const errMsgId = streamingMessageIdRef.current;
       const errorText = (error instanceof Error && error.message)
         ? error.message
         : 'Sorry, I encountered an error processing your request. Please try again.';
+      
       if (typeof errorText === 'string' && errorText.toLowerCase().includes('free trial')) {
         setShowUpgradePrompt(true);
       }
+
+      // Store the failed message for retry functionality
+      setLastFailedMessage({
+        id: userMessage.id,
+        content: userMessage.content,
+        chatId: chatId
+      });
+
       if (errChatId && errMsgId) {
-        updateMessage(errChatId, errMsgId, { content: errorText, isStreaming: false });
+        updateMessage(errChatId, errMsgId, { 
+          content: errorText + '\n\n*[Click retry to try again]*', 
+          isStreaming: false 
+        });
       } else if (chatId) {
         addMessageToChat(chatId, {
           id: crypto.randomUUID(),
           sender: 'assistant',
-          content: errorText,
+          content: errorText + '\n\n*[Click retry to try again]*',
           worker: selectedWorker,
           timestamp: new Date()
         });
@@ -411,10 +514,19 @@ export const ChatGPTMobileChat: React.FC<ChatGPTMobileChatProps> = ({ injectedFi
     } finally {
       setIsGenerating(false);
       setStreamingContent('');
+      setCanStop(false);
       if (streamingTimeoutRef.current) clearTimeout(streamingTimeoutRef.current);
       streamingChatIdRef.current = null;
       streamingMessageIdRef.current = null;
+      abortControllerRef.current = null;
       if (onFilesConsumed && (injectedFiles?.length || 0) > 0) onFilesConsumed();
+      
+      // Final auto-scroll to ensure we're at the bottom
+      setTimeout(() => {
+        if (scrollContainerRef.current) {
+          scrollContainerRef.current.scrollTop = scrollContainerRef.current.scrollHeight;
+        }
+      }, 200);
     }
   };
 
@@ -450,10 +562,17 @@ export const ChatGPTMobileChat: React.FC<ChatGPTMobileChatProps> = ({ injectedFi
   return (
     <div
       className={cn(
-        "fixed inset-0 flex flex-col bg-background overscroll-none",
+        "fixed inset-0 flex flex-col bg-background mobile-container",
         drawerOpen && "overflow-hidden"
       )}
-      style={{ height: '100dvh' }}
+      style={{ 
+        height: '100dvh',
+        width: '100vw',
+        maxWidth: '100vw',
+        touchAction: 'pan-y',
+        overflowY: 'auto',
+        WebkitOverflowScrolling: 'touch'
+      }}
     >
       {/* Trial End Modal (Mobile) */}
       <Dialog open={showUpgradePrompt} onOpenChange={setShowUpgradePrompt}>
@@ -600,7 +719,7 @@ export const ChatGPTMobileChat: React.FC<ChatGPTMobileChatProps> = ({ injectedFi
       )}
 
       {/* Main column */}
-      <div className="flex-1 flex flex-col min-w-0 min-h-0">
+      <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
         {/* ChatGPT-like top bar */}
         <div className="flex items-center justify-between px-4 py-3 border-b bg-card/95 backdrop-blur-sm sticky top-0 z-40" style={{ paddingTop: 'max(env(safe-area-inset-top), 12px)' }}>
           <div className="flex items-center space-x-2">
@@ -703,7 +822,12 @@ export const ChatGPTMobileChat: React.FC<ChatGPTMobileChatProps> = ({ injectedFi
           className="flex-1 h-0 min-h-0 max-h-full overflow-y-auto overflow-x-hidden overscroll-contain touch-pan-y flex flex-col pointer-events-auto scrollbar-thin scrollbar-thumb-gray-300 dark:scrollbar-thumb-gray-600 scrollbar-track-transparent"
           ref={scrollContainerRef}
           onScroll={handleScroll}
-          style={{ contain: 'layout style paint', WebkitOverflowScrolling: 'touch' }}
+          style={{ 
+            contain: 'layout style paint', 
+            WebkitOverflowScrolling: 'touch',
+            touchAction: 'pan-y',
+            overscrollBehavior: 'contain'
+          }}
         >
           {isLoading ? (
             <div className="flex items-center justify-center h-full p-6">
@@ -762,19 +886,34 @@ export const ChatGPTMobileChat: React.FC<ChatGPTMobileChatProps> = ({ injectedFi
                           ) : (
                             <MarkdownRenderer
                               content={content}
-                              className="prose prose-sm max-w-none prose-headings:scroll-mt-16 prose-headings:font-semibold prose-pre:bg-transparent prose-pre:p-0 prose-code:before:content-[none] prose-code:after:content-[none] prose-li:my-0 prose-ul:my-2 prose-ol:my-2 w-full leading-relaxed break-words overflow-x-hidden"
+                              className="prose prose-sm max-w-none prose-headings:scroll-mt-16 prose-headings:font-bold prose-h1:text-2xl prose-h1:font-extrabold prose-h2:text-xl prose-h2:font-bold prose-h3:text-lg prose-h3:font-bold prose-h4:text-base prose-h4:font-bold prose-pre:bg-transparent prose-pre:p-0 prose-code:before:content-[none] prose-code:after:content-[none] prose-li:my-0 prose-ul:my-2 prose-ol:my-2 w-full leading-relaxed break-words overflow-x-hidden"
                               variant="academic"
                             />
                           )}
                           {message.sender === 'assistant' && (
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              onClick={() => copyMessageContent(message.content, message.id)}
-                              className="absolute top-1 right-1 h-7 w-7 p-0 opacity-0 group-hover:opacity-100 transition-opacity text-muted-foreground hover:bg-muted/50"
-                            >
-                              {copiedMessageId === message.id ? <Check className="h-3.5 w-3.5" /> : <Copy className="h-3.5 w-3.5" />}
-                            </Button>
+                            <div className="absolute top-1 right-1 flex space-x-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                              {/* Retry button for failed messages */}
+                              {message.content.includes('[Click retry to try again]') && (
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  onClick={retryLastMessage}
+                                  className="h-7 w-7 p-0 text-orange-600 hover:bg-orange-50 hover:text-orange-700"
+                                  title="Retry this message"
+                                >
+                                  <RotateCcw className="h-3.5 w-3.5" />
+                                </Button>
+                              )}
+                              {/* Copy button */}
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                onClick={() => copyMessageContent(message.content, message.id)}
+                                className="h-7 w-7 p-0 text-muted-foreground hover:bg-muted/50"
+                              >
+                                {copiedMessageId === message.id ? <Check className="h-3.5 w-3.5" /> : <Copy className="h-3.5 w-3.5" />}
+                              </Button>
+                            </div>
                           )}
                         </div>
                         {message.sender === 'assistant' && (
@@ -805,10 +944,23 @@ export const ChatGPTMobileChat: React.FC<ChatGPTMobileChatProps> = ({ injectedFi
                         {!streamingContent && (
                           <div className="text-xs text-muted-foreground mb-2">ScribeAI is thinking…</div>
                         )}
-                        <div className="flex space-x-1">
-                          <div className="w-2 h-2 bg-primary rounded-full animate-bounce" style={{ animationDelay: '0ms' }}></div>
-                          <div className="w-2 h-2 bg-primary rounded-full animate-bounce" style={{ animationDelay: '150ms' }}></div>
-                          <div className="w-2 h-2 bg-primary rounded-full animate-bounce" style={{ animationDelay: '300ms' }}></div>
+                        <div className="flex items-center justify-between">
+                          <div className="flex space-x-1">
+                            <div className="w-2 h-2 bg-primary rounded-full animate-bounce" style={{ animationDelay: '0ms' }}></div>
+                            <div className="w-2 h-2 bg-primary rounded-full animate-bounce" style={{ animationDelay: '150ms' }}></div>
+                            <div className="w-2 h-2 bg-primary rounded-full animate-bounce" style={{ animationDelay: '300ms' }}></div>
+                          </div>
+                          {canStop && (
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={stopGeneration}
+                              className="h-6 w-6 p-0 text-red-600 hover:bg-red-50 hover:text-red-700"
+                              title="Stop generating"
+                            >
+                              <Square className="h-3 w-3" />
+                            </Button>
+                          )}
                         </div>
                       </div>
                     </div>
@@ -824,7 +976,12 @@ export const ChatGPTMobileChat: React.FC<ChatGPTMobileChatProps> = ({ injectedFi
         {/* Input area */}
         <div
           className="border-t bg-card/95 backdrop-blur-sm p-3 sticky bottom-0"
-          style={{ paddingBottom: 'max(env(safe-area-inset-bottom), 12px)' }}
+          style={{ 
+            paddingBottom: 'max(env(safe-area-inset-bottom), 12px)',
+            touchAction: 'manipulation',
+            userSelect: 'none',
+            WebkitUserSelect: 'none'
+          }}
         >
           {/* Model Toggle */}
           <div className="mb-2 flex justify-center">
@@ -867,20 +1024,25 @@ export const ChatGPTMobileChat: React.FC<ChatGPTMobileChatProps> = ({ injectedFi
                 onKeyPress={handleKeyPress}
                 placeholder={currentChat && currentChat.messages.length > 0 ? `Message ScribeAI... (${currentChat.messages.length} msgs)` : 'Message ScribeAI...'}
                 className="w-full h-10 min-h-[40px] max-h-[40px] resize-none pr-12 py-2 px-3 text-sm rounded-lg border border-border bg-background text-foreground focus:border-primary focus:ring-1 focus:ring-primary/20 placeholder:text-muted-foreground transition-all duration-200"
+                style={{
+                  fontSize: '16px', // Prevents zoom on iOS
+                  touchAction: 'manipulation',
+                  WebkitAppearance: 'none'
+                }}
                 rows={1}
               />
               <Button variant="ghost" size="sm" onClick={() => fileInputRef.current?.click()} className="absolute right-10 bottom-2 h-6 w-6 p-0 hover:bg-muted rounded-md">
                 <Upload className="h-3 w-3" />
               </Button>
               <Button
-                variant="default"
+                variant={canStop ? "destructive" : "default"}
                 size="sm"
-                onClick={sendMessage}
-                disabled={(!input.trim() && pendingFiles.length === 0) || isGenerating}
+                onClick={canStop ? stopGeneration : sendMessage}
+                disabled={(!input.trim() && pendingFiles.length === 0) && !canStop}
                 className="absolute right-2 bottom-2 h-6 w-6 p-0 rounded-md"
-                title="Send"
+                title={canStop ? "Stop generating" : "Send"}
               >
-                <Send className="h-4 w-4" />
+                {canStop ? <Square className="h-4 w-4" /> : <Send className="h-4 w-4" />}
               </Button>
               <input ref={fileInputRef} type="file" multiple onChange={(e) => { const files = Array.from(e.target.files || []); setPendingFiles(prev => [...prev, ...files]); }} className="hidden" accept="*/*" />
             </div>

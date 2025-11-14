@@ -1,5 +1,5 @@
 import { supabase } from '@/integrations/supabase/client';
-import { UserSubscription, SubscriptionPlan, PaymentStatus } from '@/types/subscription';
+import { UserSubscription, SubscriptionPlan, PaymentStatus, PaymentRecord } from '@/types/subscription';
 import type { Tables, TablesInsert, TablesUpdate } from '@/integrations/supabase/types';
 
 export class SubscriptionService {
@@ -197,6 +197,7 @@ export class SubscriptionService {
           amount,
           currency: 'NGN',
           status: 'success',
+          plan: plan,
           customer_email: customerEmail
         });
 
@@ -289,6 +290,22 @@ export class SubscriptionService {
 
       if (checkError) {
         console.error('❌ Error checking existing payment history:', checkError);
+        // If the plan column doesn't exist, just check if any payment exists for this subscription
+        if (checkError.code === '42703' && checkError.message?.includes('plan')) {
+          console.log('⚠️ Plan column not found in payment_history, checking without plan filter');
+          const { data: fallbackPayments, error: fallbackError } = await supabase
+            .from('payment_history')
+            .select('*')
+            .eq('subscription_id', subscriptionId)
+            .eq('status', 'success');
+
+          if (fallbackError) {
+            console.error('❌ Fallback payment check also failed:', fallbackError);
+            return false;
+          }
+
+          return !fallbackPayments || fallbackPayments.length === 0;
+        }
         return false;
       }
 

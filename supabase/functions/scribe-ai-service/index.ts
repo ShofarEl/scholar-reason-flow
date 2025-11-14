@@ -31,7 +31,7 @@ serve(async (req) => {
       });
     }
 
-    const { message, systemPrompt, conversationHistory = [], model = 'claude-3-5-sonnet-20241022', temperature = 0.7, max_tokens = 4096 } = await req.json();
+    const { message, systemPrompt, conversationHistory = [], model = 'claude-3-5-sonnet-20241022', temperature = 0.7, max_tokens = 8192 } = await req.json();
 
     console.log('ScribeAI request:', {
       model,

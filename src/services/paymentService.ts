@@ -418,7 +418,7 @@ import {
         // For trial, message count is less relevant now; return 1 if tokens remain, else 0
         return (await this.getRemainingTrialTokens(userId)) > 0 ? 1 : 0;
       }
-      const dailyLimit = subscription.plan === 'basic' ? 100 : 500;
+      const dailyLimit = subscription.plan === 'basic' ? 30 : 100;
       return Math.max(0, dailyLimit - subscription.usage.dailyUsage.aiMessages);
     }
   

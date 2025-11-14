@@ -439,7 +439,7 @@ type ResultEntry = {
 };
 
 // Conservative cap for Anthropic output tokens to avoid 400 invalid_request errors
-const MAX_OUTPUT_TOKENS = 8000;
+const MAX_OUTPUT_TOKENS = 8192;
 const generateSystemPrompt = (requestType, projectTitle, citationStyle, chapterContext = null) => {
   const basePrompt = `You are ThinqScribe, an advanced academic writing AI specializing in comprehensive scholarly projects. You are working on a large-scale academic project titled "${projectTitle}" using ${citationStyle} citation style.
 

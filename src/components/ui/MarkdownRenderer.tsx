@@ -459,7 +459,7 @@ export const MarkdownRenderer: React.FC<MarkdownRendererProps> = ({
       className={[
         'prose prose-sm max-w-none',
         isDark ? 'dark:prose-invert' : '',
-        'prose-headings:scroll-mt-16 prose-headings:font-semibold',
+        'prose-headings:scroll-mt-16 prose-headings:font-bold',
         'prose-pre:bg-transparent prose-pre:p-0 prose-code:before:content-[none] prose-code:after:content-[none]',
         'prose-li:my-0 prose-ul:my-2 prose-ol:my-2',
         variant === 'academic' ? 'prose-lg' : '',
@@ -624,13 +624,14 @@ export const MarkdownRenderer: React.FC<MarkdownRendererProps> = ({
             );
           },
 
-          // Clean headings without hash symbols
+          // Clean headings without hash symbols - Enhanced for mobile boldness
           h1: ({ children, ...props }) => {
             const id = typeof children === 'string' ? children.toLowerCase().replace(/\s+/g, '-').replace(/[^\w-]/g, '') : '';
             return (
               <h1 
                 id={id}
-                className="text-3xl font-bold mb-6 mt-8 text-foreground border-b border-border pb-2 scroll-mt-16"
+                className="text-3xl font-extrabold mb-6 mt-8 text-foreground border-b border-border pb-2 scroll-mt-16 !font-extrabold"
+                style={{ fontWeight: '800' }}
                 {...props}
               >
                 {children}
@@ -643,7 +644,8 @@ export const MarkdownRenderer: React.FC<MarkdownRendererProps> = ({
             return (
               <h2 
                 id={id}
-                className="text-2xl font-semibold mb-4 mt-6 text-foreground border-b border-border pb-1 scroll-mt-16"
+                className="text-2xl font-bold mb-4 mt-6 text-foreground border-b border-border pb-1 scroll-mt-16 !font-bold"
+                style={{ fontWeight: '700' }}
                 {...props}
               >
                 {children}
@@ -656,7 +658,8 @@ export const MarkdownRenderer: React.FC<MarkdownRendererProps> = ({
             return (
               <h3 
                 id={id}
-                className="text-xl font-semibold mb-3 mt-5 text-foreground scroll-mt-16"
+                className="text-xl font-bold mb-3 mt-5 text-foreground scroll-mt-16 !font-bold"
+                style={{ fontWeight: '700' }}
                 {...props}
               >
                 {children}
@@ -665,19 +668,31 @@ export const MarkdownRenderer: React.FC<MarkdownRendererProps> = ({
           },
 
           h4: ({ children, ...props }) => (
-            <h4 className="text-lg font-semibold mb-2 mt-4 text-foreground" {...props}>
+            <h4 
+              className="text-lg font-bold mb-2 mt-4 text-foreground !font-bold" 
+              style={{ fontWeight: '700' }}
+              {...props}
+            >
               {children}
             </h4>
           ),
 
           h5: ({ children, ...props }) => (
-            <h5 className="text-base font-semibold mb-2 mt-3 text-foreground" {...props}>
+            <h5 
+              className="text-base font-bold mb-2 mt-3 text-foreground !font-bold" 
+              style={{ fontWeight: '700' }}
+              {...props}
+            >
               {children}
             </h5>
           ),
 
           h6: ({ children, ...props }) => (
-            <h6 className="text-sm font-semibold mb-2 mt-3 text-foreground" {...props}>
+            <h6 
+              className="text-sm font-bold mb-2 mt-3 text-foreground !font-bold" 
+              style={{ fontWeight: '700' }}
+              {...props}
+            >
               {children}
             </h6>
           ),

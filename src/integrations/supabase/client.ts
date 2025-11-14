@@ -11,5 +11,11 @@ export const supabase = createClient<Database>(SUPABASE_URL, SUPABASE_ANON_KEY, 
     storage: localStorage,
     persistSession: true,
     autoRefreshToken: true,
+    detectSessionInUrl: true,
+    flowType: 'pkce',
+    // Prevent session loss during operations
+    storageKey: 'supabase.auth.token',
+    // Refresh token before expiry to prevent interruptions
+    debug: false
   }
 });

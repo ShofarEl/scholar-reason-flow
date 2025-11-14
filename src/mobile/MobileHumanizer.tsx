@@ -8,12 +8,61 @@ import { HumanizationService } from '@/services/humanizationService';
 import { ExportService } from '@/services/exportService';
 import { FileTextExtractor } from '@/utils/fileTextExtractor';
 import { MarkdownRenderer } from '@/components/ui/MarkdownRenderer';
-import { Upload, Wand2, Copy, Download, X, FileText, Sparkles, CheckCircle } from 'lucide-react';
+import { Upload, Wand2, Copy, Download, X, FileText, Sparkles, CheckCircle, BookOpen, GraduationCap, FileBarChart, Search, Scroll } from 'lucide-react';
 import { useSubscription } from '@/hooks/useSubscription';
 import { useToast } from '@/hooks/use-toast';
 
 type HumanizationTone = 'Standard' | 'HighSchool' | 'College' | 'PhD';
-type HumanizationMode = 'High' | 'Medium' | 'Low';
+type HumanizationMode = 'Low' | 'Medium' | 'High';
+
+// Academic writing presets
+const ACADEMIC_PRESETS = {
+  essay: {
+    name: 'Academic Essay',
+    description: 'Research papers, argumentative essays, and academic writing',
+    tone: 'College' as HumanizationTone,
+    mode: 'Medium' as HumanizationMode,
+    icon: BookOpen,
+    color: 'bg-blue-500',
+    textColor: 'text-blue-600'
+  },
+  thesis: {
+    name: 'Thesis/Dissertation',
+    description: 'Advanced academic writing for graduate and doctoral work',
+    tone: 'PhD' as HumanizationTone,
+    mode: 'High' as HumanizationMode,
+    icon: GraduationCap,
+    color: 'bg-purple-500',
+    textColor: 'text-purple-600'
+  },
+  report: {
+    name: 'Research Report',
+    description: 'Professional research reports and scientific papers',
+    tone: 'College' as HumanizationTone,
+    mode: 'Medium' as HumanizationMode,
+    icon: FileBarChart,
+    color: 'bg-green-500',
+    textColor: 'text-green-600'
+  },
+  analysis: {
+    name: 'Critical Analysis',
+    description: 'Analytical writing with sophisticated argumentation',
+    tone: 'PhD' as HumanizationTone,
+    mode: 'High' as HumanizationMode,
+    icon: Search,
+    color: 'bg-orange-500',
+    textColor: 'text-orange-600'
+  },
+  summary: {
+    name: 'Literature Review',
+    description: 'Comprehensive literature reviews and summaries',
+    tone: 'College' as HumanizationTone,
+    mode: 'Medium' as HumanizationMode,
+    icon: Scroll,
+    color: 'bg-indigo-500',
+    textColor: 'text-indigo-600'
+  }
+};
 
 const MobileHumanizer: React.FC = () => {
   const { hasPremiumPlan, canUseHumanizer, getRemainingHumanizerWords } = useSubscription();
@@ -25,396 +74,472 @@ const MobileHumanizer: React.FC = () => {
   const [result, setResult] = useState('');
   const [files, setFiles] = useState<File[]>([]);
   const [copied, setCopied] = useState(false);
+  const [selectedPreset, setSelectedPreset] = useState<string>('essay');
+  const [activeTab, setActiveTab] = useState<'presets' | 'custom'>('presets');
   const uploadRef = useRef<HTMLInputElement>(null);
+  
+  const applyPreset = (presetKey: keyof typeof ACADEMIC_PRESETS) => {
+    const preset = ACADEMIC_PRESETS[presetKey];
+    setTone(preset.tone);
+    setMode(preset.mode);
+    setSelectedPreset(presetKey);
+    toast({
+      title: "Academic Preset Applied",
+      description: `Applied ${preset.name} settings for optimal academic humanization.`,
+    });
+  };
 
   const onFilesSelected = async (selected: File[]) => {
     if (!selected.length) return;
     setFiles(prev => [...prev, ...selected]);
     let combined = input ? input + '\n\n' : '';
-    for (const f of selected) {
+    
+    for (const file of selected) {
       try {
-        const text = await FileTextExtractor.extractText(f);
-        if (text && text.trim().length) {
-          combined += text.trim() + '\n\n';
-        }
-      } catch {}
+        const text = await FileTextExtractor.extractText(file);
+        combined += `**${file.name}**\n${text}\n\n`;
+      } catch (error) {
+        console.error('Error extracting text from file:', error);
+        combined += `**${file.name}**\n[Error extracting text from this file]\n\n`;
+      }
     }
-    setInput(combined.trim());
-  };
-
-  const removeFile = (idx: number) => {
-    setFiles(prev => prev.filter((_, i) => i !== idx));
+    setInput(combined);
   };
 
   const handleHumanize = async () => {
     if (!input.trim()) {
       toast({
-        title: "No text to humanize",
-        description: "Please enter some text to humanize.",
-        variant: "destructive"
+        title: "No Text to Humanize",
+        description: "Please enter some text or upload a file to humanize.",
+        variant: "destructive",
       });
       return;
     }
     
-    const wordsToUse = input.split(/\s+/).filter(Boolean).length;
-    if (!hasPremiumPlan()) {
+    if (!canUseHumanizer) {
       toast({
         title: "Premium Required",
-        description: "Humanizer is available on the Premium plan. Please subscribe to unlock up to 10,000 words.",
-        variant: "destructive"
+        description: "Humanization is only available for premium users. Please upgrade to continue.",
+        variant: "destructive",
       });
       return;
     }
     
-    if (!canUseHumanizer(wordsToUse)) {
-      const remaining = getRemainingHumanizerWords();
+    const wordCount = input.trim().split(/\s+/).length;
+    const remaining = await getRemainingHumanizerWords();
+    
+    if (wordCount > remaining) {
       toast({
-        title: "Word limit reached",
-        description: `You have ${remaining.toLocaleString()} words remaining. Please upgrade your plan for more capacity.`,
-        variant: "destructive"
+        title: "Word Limit Exceeded",
+        description: `You have ${remaining} words remaining. Your text has ${wordCount} words. Please upgrade for more words.`,
+        variant: "destructive",
       });
       return;
     }
     
     setIsHumanizing(true);
-    setResult('');
-    
     try {
-      const resp = await HumanizationService.humanizeTextFull({
+      const humanized = await HumanizationService.humanizeTextFull({
         prompt: input,
-        rephrase: false,
-        tone,
-        mode,
-        business: false,
-        maxChunkChars: 3500
+        rephrase: true,
+        tone: tone,
+        mode: mode,
+        business: false
       });
-      
-      if (resp.success) {
-        setResult(resp.result || '');
+      setResult(typeof humanized === 'string' ? humanized : humanized.result || '');
         toast({
-          title: "Text humanized successfully",
-          description: "Your text has been processed and made more natural.",
-        });
-      } else {
-        toast({
-          title: "Humanization failed",
-          description: resp.message || "Failed to humanize text. Please try again.",
-          variant: "destructive"
-        });
-      }
+        title: "Text Humanized Successfully",
+        description: "Your academic writing has been enhanced with professional language.",
+      });
     } catch (error) {
       console.error('Humanization error:', error);
       toast({
-        title: "Error occurred",
-        description: "An error occurred while humanizing your text. Please try again.",
-        variant: "destructive"
+        title: "Humanization Failed",
+        description: "Failed to humanize text. Please try again.",
+        variant: "destructive",
       });
     } finally {
       setIsHumanizing(false);
     }
   };
 
-  const copyOut = async () => {
-    if (!result.trim()) {
-      toast({
-        title: "No content to copy",
-        description: "Please humanize some text first.",
-        variant: "destructive"
-      });
-      return;
-    }
-    
+  const handleCopy = async () => {
+    if (!result) return;
     try {
       await navigator.clipboard.writeText(result);
       setCopied(true);
-      setTimeout(() => setCopied(false), 2000);
       toast({
-        title: "Copied to clipboard",
-        description: "The humanized text has been copied to your clipboard.",
+        title: "Copied to Clipboard",
+        description: "Humanized text has been copied to your clipboard.",
       });
+      setTimeout(() => setCopied(false), 2000);
     } catch (error) {
       toast({
-        title: "Copy failed",
-        description: "Failed to copy text to clipboard. Please try again.",
-        variant: "destructive"
+        title: "Copy Failed",
+        description: "Failed to copy text to clipboard.",
+        variant: "destructive",
       });
     }
   };
 
-  const exportOut = async (format: 'docx' | 'pdf' | 'txt') => {
-    if (!result.trim()) {
+  const handleDownload = () => {
+    if (!result) return;
+    ExportService.exportToTxt(result, 'humanized-text.txt');
       toast({
-        title: "No content to export",
-        description: "Please humanize some text first.",
-        variant: "destructive"
-      });
-      return;
-    }
-    
-    try {
-      await ExportService.exportContent(result, `Humanized_${new Date().toISOString().split('T')[0]}`, format);
-      toast({
-        title: "Export successful",
-        description: `Your humanized text has been exported as ${format.toUpperCase()}.`,
-      });
-    } catch (error) {
-      toast({
-        title: "Export failed",
-        description: "Failed to export text. Please try again.",
-        variant: "destructive"
-      });
-    }
+      title: "Download Started",
+      description: "Your humanized text is being downloaded.",
+    });
   };
+
+  const removeFile = (index: number) => {
+    setFiles(prev => prev.filter((_, i) => i !== index));
+  };
+
+  const wordCount = input.trim().split(/\s+/).filter(word => word.length > 0).length;
 
   return (
-    <div className="space-y-6">
+    <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-50">
       {/* Header */}
-      <div className="text-center space-y-2">
-        <div className="flex items-center justify-center space-x-2">
-          <div className="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center">
-            <Wand2 className="h-5 w-5 text-primary" />
-          </div>
-          <h1 className="text-2xl font-bold">Text Humanizer</h1>
-        </div>
-        <p className="text-muted-foreground">
-          Transform AI-generated text into natural, human-like content
-        </p>
-      </div>
-
-      {/* Input Section */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center space-x-2">
-            <FileText className="h-5 w-5" />
-            <span>Input Text</span>
-          </CardTitle>
-          <CardDescription>
-            Paste or type the text you want to humanize. The AI will make it sound more natural and human-like.
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <Textarea
-            value={input}
-            onChange={(e) => setInput(e.target.value)}
-            placeholder="Paste or type text to humanize... (e.g., AI-generated content, academic text, or any text that needs to sound more natural)"
-            className="min-h-[200px] resize-y border-2 border-border bg-background text-foreground placeholder:text-muted-foreground focus:border-primary focus:ring-2 focus:ring-primary/20 transition-all duration-200"
-            disabled={isHumanizing}
-          />
-          
-          {files.length > 0 && (
-            <div className="space-y-2">
-              <div className="text-sm font-medium">Uploaded Files:</div>
-              <div className="flex flex-wrap gap-2">
-                {files.map((f, i) => (
-                  <div key={i} className="flex items-center gap-2 bg-muted/50 rounded-lg px-3 py-2 text-sm">
-                    <FileText className="h-4 w-4 text-muted-foreground" />
-                    <span className="truncate max-w-[200px]">{f.name}</span>
-                    <Button 
-                      variant="ghost" 
-                      size="sm" 
-                      className="h-6 w-6 p-0 hover:bg-destructive hover:text-destructive-foreground" 
-                      onClick={() => removeFile(i)}
-                    >
-                      <X className="h-3 w-3" />
-                    </Button>
-                  </div>
-                ))}
+      <div className="sticky top-0 z-50 bg-white/95 backdrop-blur-sm border-b border-slate-200 shadow-sm">
+        <div className="px-4 py-4">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center space-x-3">
+              <div className="p-2 bg-gradient-to-r from-blue-500 to-indigo-600 rounded-xl shadow-lg">
+                <Sparkles className="h-6 w-6 text-white" />
+              </div>
+              <div>
+                <h1 className="text-xl font-bold text-slate-800">Academic Humanizer</h1>
+                <p className="text-sm text-slate-500">Enhance your academic writing</p>
               </div>
             </div>
-          )}
+            {hasPremiumPlan && (
+              <Badge variant="secondary" className="bg-emerald-100 text-emerald-700 border-emerald-200">
+                Premium
+              </Badge>
+            )}
+          </div>
+          </div>
+        </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+      <div className="px-4 py-6 space-y-6">
+        {/* Tab Navigation */}
+        <div className="flex bg-white rounded-xl p-1 shadow-sm border border-slate-200">
+          <button
+            onClick={() => setActiveTab('presets')}
+            className={`flex-1 py-3 px-4 rounded-lg font-medium transition-all duration-200 ${
+              activeTab === 'presets'
+                ? 'bg-blue-500 text-white shadow-sm'
+                : 'text-slate-600 hover:text-slate-800'
+            }`}
+          >
+            Quick Presets
+          </button>
+          <button
+            onClick={() => setActiveTab('custom')}
+            className={`flex-1 py-3 px-4 rounded-lg font-medium transition-all duration-200 ${
+              activeTab === 'custom'
+                ? 'bg-blue-500 text-white shadow-sm'
+                : 'text-slate-600 hover:text-slate-800'
+            }`}
+          >
+            Custom Settings
+          </button>
+      </div>
+
+        {/* Academic Presets */}
+        {activeTab === 'presets' && (
+          <Card className="border-0 shadow-lg bg-white/80 backdrop-blur-sm">
+            <CardHeader className="pb-4">
+              <CardTitle className="text-lg font-semibold text-slate-800 flex items-center space-x-2">
+                <BookOpen className="h-5 w-5 text-blue-500" />
+                <span>Academic Writing Presets</span>
+          </CardTitle>
+              <CardDescription className="text-slate-600">
+                Choose a preset optimized for your type of academic writing
+          </CardDescription>
+        </CardHeader>
+            <CardContent className="space-y-3">
+              {Object.entries(ACADEMIC_PRESETS).map(([key, preset]) => {
+                const IconComponent = preset.icon;
+                const isSelected = selectedPreset === key;
+                return (
+                  <button
+                    key={key}
+                    onClick={() => applyPreset(key as keyof typeof ACADEMIC_PRESETS)}
+                    className={`w-full p-4 rounded-xl border-2 transition-all duration-200 text-left ${
+                      isSelected
+                        ? 'border-blue-500 bg-blue-50 shadow-md'
+                        : 'border-slate-200 bg-white hover:border-slate-300 hover:shadow-sm'
+                    }`}
+                  >
+                    <div className="flex items-start space-x-4">
+                      <div className={`p-3 rounded-lg ${preset.color} shadow-sm`}>
+                        <IconComponent className="h-5 w-5 text-white" />
+                  </div>
+                      <div className="flex-1 min-w-0">
+                        <h3 className="font-semibold text-slate-800 mb-1">{preset.name}</h3>
+                        <p className="text-sm text-slate-600 mb-2">{preset.description}</p>
+                        <div className="flex items-center space-x-4 text-xs">
+                          <span className={`px-2 py-1 rounded-full ${preset.textColor} bg-opacity-10`}>
+                            {preset.tone} Level
+                          </span>
+                          <span className={`px-2 py-1 rounded-full ${preset.textColor} bg-opacity-10`}>
+                            {preset.mode} Intensity
+                          </span>
+              </div>
+            </div>
+                      {isSelected && (
+                        <CheckCircle className="h-5 w-5 text-blue-500 flex-shrink-0 mt-1" />
+                      )}
+                    </div>
+                  </button>
+                );
+              })}
+            </CardContent>
+          </Card>
+        )}
+
+        {/* Custom Settings */}
+        {activeTab === 'custom' && (
+          <Card className="border-0 shadow-lg bg-white/80 backdrop-blur-sm">
+            <CardHeader className="pb-4">
+              <CardTitle className="text-lg font-semibold text-slate-800">Custom Settings</CardTitle>
+              <CardDescription className="text-slate-600">
+                Fine-tune the humanization settings for your specific needs
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-6">
+              {/* Academic Level */}
             <div className="space-y-2">
-              <label className="text-sm font-medium">Tone</label>
-              <Select value={tone} onValueChange={(v) => setTone(v as HumanizationTone)} disabled={isHumanizing}>
-                <SelectTrigger className="border-2 border-border bg-background text-foreground focus:border-primary focus:ring-2 focus:ring-primary/20">
-                  <SelectValue placeholder="Select tone" />
+                <label className="text-sm font-medium text-slate-700">Academic Level</label>
+                <Select value={tone} onValueChange={(value: HumanizationTone) => setTone(value)}>
+                  <SelectTrigger className="h-12 border-slate-200 rounded-xl">
+                    <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="HighSchool">High School</SelectItem>
-                  <SelectItem value="College">College</SelectItem>
-                  <SelectItem value="PhD">PhD Level</SelectItem>
-                  <SelectItem value="Standard">Standard</SelectItem>
+                    <SelectItem value="Standard">
+                      <div className="py-1">
+                        <div className="font-medium">Standard</div>
+                        <div className="text-xs text-slate-500">General academic writing</div>
+                      </div>
+                    </SelectItem>
+                    <SelectItem value="HighSchool">
+                      <div className="py-1">
+                        <div className="font-medium">High School</div>
+                        <div className="text-xs text-slate-500">Appropriate for secondary education</div>
+                      </div>
+                    </SelectItem>
+                    <SelectItem value="College">
+                      <div className="py-1">
+                        <div className="font-medium">College/Undergraduate</div>
+                        <div className="text-xs text-slate-500">University-level academic writing</div>
+                      </div>
+                    </SelectItem>
+                    <SelectItem value="PhD">
+                      <div className="py-1">
+                        <div className="font-medium">PhD/Graduate</div>
+                        <div className="text-xs text-slate-500">Advanced scholarly writing</div>
+                      </div>
+                    </SelectItem>
                 </SelectContent>
               </Select>
             </div>
 
+              {/* Humanization Intensity */}
             <div className="space-y-2">
-              <label className="text-sm font-medium">Intensity</label>
-              <Select value={mode} onValueChange={(v) => setMode(v as HumanizationMode)} disabled={isHumanizing}>
-                <SelectTrigger className="border-2 border-border bg-background text-foreground focus:border-primary focus:ring-2 focus:ring-primary/20">
-                  <SelectValue placeholder="Select intensity" />
+                <label className="text-sm font-medium text-slate-700">Humanization Intensity</label>
+                <Select value={mode} onValueChange={(value: HumanizationMode) => setMode(value)}>
+                  <SelectTrigger className="h-12 border-slate-200 rounded-xl">
+                    <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="Low">Low</SelectItem>
-                  <SelectItem value="Medium">Medium</SelectItem>
-                  <SelectItem value="High">High</SelectItem>
+                    <SelectItem value="Low">
+                      <div className="py-1">
+                        <div className="font-medium">Low</div>
+                        <div className="text-xs text-slate-500">Subtle improvements to natural flow</div>
+                      </div>
+                    </SelectItem>
+                    <SelectItem value="Medium">
+                      <div className="py-1">
+                        <div className="font-medium">Medium</div>
+                        <div className="text-xs text-slate-500">Balanced enhancement of clarity and style</div>
+                      </div>
+                    </SelectItem>
+                    <SelectItem value="High">
+                      <div className="py-1">
+                        <div className="font-medium">High</div>
+                        <div className="text-xs text-slate-500">Comprehensive rewriting for maximum impact</div>
+                      </div>
+                    </SelectItem>
                 </SelectContent>
               </Select>
             </div>
+            </CardContent>
+          </Card>
+        )}
 
-            <div className="space-y-2">
-              <label className="text-sm font-medium">Upload Files</label>
-              <Button 
-                variant="outline" 
-                className="w-full border-2 border-border hover:border-primary hover:bg-primary/5 transition-all duration-200" 
-                onClick={() => uploadRef.current?.click()}
-                disabled={isHumanizing}
-              >
-                <Upload className="h-4 w-4 mr-2" />
-                Upload Files
-              </Button>
+        {/* File Upload */}
+        <Card className="border-0 shadow-lg bg-white/80 backdrop-blur-sm">
+          <CardHeader className="pb-4">
+            <CardTitle className="text-lg font-semibold text-slate-800 flex items-center space-x-2">
+              <Upload className="h-5 w-5 text-blue-500" />
+              <span>Upload Documents</span>
+            </CardTitle>
+            <CardDescription className="text-slate-600">
+              Upload text files, PDFs, or Word documents to extract and humanize content
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-4">
               <input 
                 ref={uploadRef} 
                 type="file" 
                 multiple 
+                accept=".txt,.pdf,.doc,.docx"
+                onChange={(e) => e.target.files && onFilesSelected(Array.from(e.target.files))}
                 className="hidden" 
-                onChange={(e) => onFilesSelected(Array.from(e.target.files || []))} 
-                accept=".txt,.doc,.docx,.pdf"
               />
-            </div>
-          </div>
-
-          <Button 
-            onClick={handleHumanize} 
-            disabled={!input.trim() || isHumanizing} 
-            className="w-full h-12 text-base bg-primary hover:bg-primary/90 text-white shadow-lg hover:shadow-xl transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed"
-            size="lg"
-          >
-            {isHumanizing ? (
-              <>
-                <Wand2 className="h-5 w-5 mr-2 animate-spin" />
-                Humanizing Text...
-              </>
-            ) : (
-              <>
-                <Wand2 className="h-5 w-5 mr-2" />
-                Humanize Text
-              </>
-            )}
-          </Button>
-        </CardContent>
-      </Card>
-
-      {/* Output Section */}
-      {(result || isHumanizing) && (
-        <Card>
-          <CardHeader>
-            <div className="flex items-center justify-between">
-              <div>
-                <CardTitle className="flex items-center space-x-2">
-                  <CheckCircle className="h-5 w-5 text-green-500" />
-                  <span>Humanized Text</span>
-                </CardTitle>
-                <CardDescription>
-                  Your text has been processed to sound more natural and human-like.
-                </CardDescription>
-              </div>
-              {result && (
-                    <div className="flex items-center space-x-2">
-                      <Button 
-                        variant="outline" 
-                        size="sm" 
-                        onClick={copyOut}
-                        className="flex items-center space-x-2 border-primary/20 text-primary hover:bg-primary/10 hover:border-primary/40 transition-all duration-200"
+              <Button
+                onClick={() => uploadRef.current?.click()}
+                variant="outline"
+                className="w-full h-12 border-dashed border-2 border-slate-300 hover:border-blue-400 hover:bg-blue-50 rounded-xl transition-all duration-200"
+              >
+                <Upload className="h-5 w-5 mr-2" />
+                Choose Files or Drag & Drop
+              </Button>
+              
+              {files.length > 0 && (
+                <div className="space-y-2">
+                  <h4 className="text-sm font-medium text-slate-700">Uploaded Files</h4>
+                  {files.map((file, index) => (
+                    <div key={index} className="flex items-center justify-between p-3 bg-slate-50 rounded-lg">
+                      <div className="flex items-center space-x-3">
+                        <FileText className="h-4 w-4 text-slate-500" />
+                        <span className="text-sm font-medium text-slate-700">{file.name}</span>
+                      </div>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => removeFile(index)}
+                        className="h-8 w-8 p-0 text-slate-500 hover:text-red-500"
                       >
-                        {copied ? (
-                          <CheckCircle className="h-4 w-4" />
-                        ) : (
-                          <Copy className="h-4 w-4" />
-                        )}
-                        <span>{copied ? 'Copied!' : 'Copy'}</span>
-                      </Button>
-                      <Button 
-                        variant="outline" 
-                        size="sm" 
-                        onClick={() => exportOut('docx')}
-                        className="flex items-center space-x-2 border-primary/20 text-primary hover:bg-primary/10 hover:border-primary/40 transition-all duration-200"
-                      >
-                        <Download className="h-4 w-4" />
-                        <span>Export</span>
+                        <X className="h-4 w-4" />
                       </Button>
                     </div>
-              )}
-            </div>
-          </CardHeader>
-          <CardContent>
-            <div className="bg-muted/20 p-6 rounded-lg border border-border shadow-sm">
-              {result ? (
-                <div className="space-y-4">
-                  <div className="prose prose-sm max-w-none text-foreground">
-                    <MarkdownRenderer content={result} className="max-w-none" />
-                  </div>
-                  <div className="flex items-center justify-between text-sm text-muted-foreground pt-4 border-t border-border">
-                    <div className="flex items-center space-x-4">
-                      <span className="font-medium">{result.length} characters</span>
-                      <span className="font-medium">{result.split(/\s+/).filter(Boolean).length} words</span>
-                    </div>
-                    <div className="flex items-center space-x-2">
-                      <Badge variant="outline" className="text-xs border-primary/20 text-primary">
-                        {tone} tone
-                      </Badge>
-                      <Badge variant="outline" className="text-xs border-primary/20 text-primary">
-                        {mode} intensity
-                      </Badge>
-                    </div>
-                  </div>
-                </div>
-              ) : (
-                <div className="flex items-center justify-center py-8">
-                  <div className="text-center space-y-2">
-                    <Wand2 className="h-8 w-8 animate-spin text-primary mx-auto" />
-                    <p className="text-sm text-muted-foreground font-medium">Processing your text...</p>
-                    <p className="text-xs text-muted-foreground">This may take a few moments</p>
-                  </div>
+                  ))}
                 </div>
               )}
             </div>
           </CardContent>
         </Card>
-      )}
 
-      {/* Features */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center space-x-2">
-            <Sparkles className="h-5 w-5" />
-            <span>Features</span>
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div className="space-y-2">
-              <h4 className="font-medium">Natural Language Processing</h4>
-              <p className="text-sm text-muted-foreground">
-                Advanced AI algorithms to make text sound more human and natural.
-              </p>
-            </div>
-            <div className="space-y-2">
-              <h4 className="font-medium">Multiple Tones</h4>
-              <p className="text-sm text-muted-foreground">
-                Choose from High School, College, PhD, or Standard writing levels.
-              </p>
-            </div>
-            <div className="space-y-2">
-              <h4 className="font-medium">Adjustable Intensity</h4>
-              <p className="text-sm text-muted-foreground">
-                Control how much the text is modified with Low, Medium, or High settings.
-              </p>
-            </div>
-            <div className="space-y-2">
-              <h4 className="font-medium">File Support</h4>
-              <p className="text-sm text-muted-foreground">
-                Upload and process text from various file formats including PDF, DOC, and TXT.
-              </p>
-            </div>
+        {/* Text Input */}
+        <Card className="border-0 shadow-lg bg-white/80 backdrop-blur-sm">
+          <CardHeader className="pb-4">
+            <CardTitle className="text-lg font-semibold text-slate-800">Your Text</CardTitle>
+            <CardDescription className="text-slate-600">
+              Enter the text you want to humanize or enhance for academic writing
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <Textarea
+              value={input}
+              onChange={(e) => setInput(e.target.value)}
+              placeholder="Paste your text here or upload a document above..."
+              className="min-h-[200px] border-slate-200 rounded-xl resize-none text-base"
+            />
+            <div className="flex justify-between items-center mt-3">
+              <span className="text-sm text-slate-500">
+                {wordCount} words
+              </span>
+              {!hasPremiumPlan && (
+                <Badge variant="outline" className="text-orange-600 border-orange-200">
+                  Premium Required
+                </Badge>
+              )}
           </div>
-        </CardContent>
-      </Card>
+          </CardContent>
+        </Card>
+
+        {/* Humanize Button */}
+          <Button 
+            onClick={handleHumanize} 
+          disabled={!input.trim() || isHumanizing || !canUseHumanizer}
+          className="w-full h-14 bg-gradient-to-r from-blue-500 to-indigo-600 hover:from-blue-600 hover:to-indigo-700 text-white font-semibold rounded-xl shadow-lg hover:shadow-xl transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            {isHumanizing ? (
+              <>
+              <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white mr-2"></div>
+              Enhancing Academic Writing...
+              </>
+            ) : (
+              <>
+              <Sparkles className="h-5 w-5 mr-2" />
+              Enhance Academic Writing
+              </>
+            )}
+          </Button>
+
+        {/* Current Settings Display */}
+        <div className="flex items-center justify-center space-x-6 py-3 bg-white/60 rounded-xl border border-slate-200">
+          <div className="text-center">
+            <div className="text-xs text-slate-500">Academic Level</div>
+            <div className="font-semibold text-slate-700">{tone}</div>
+          </div>
+          <div className="w-px h-8 bg-slate-300"></div>
+          <div className="text-center">
+            <div className="text-xs text-slate-500">Intensity</div>
+            <div className="font-semibold text-slate-700">{mode}</div>
+          </div>
+          <div className="w-px h-8 bg-slate-300"></div>
+          <div className="text-center">
+            <div className="text-xs text-slate-500">Words</div>
+            <div className="font-semibold text-slate-700">{wordCount}</div>
+          </div>
+        </div>
+
+        {/* Results */}
+        {result && (
+          <Card className="border-0 shadow-lg bg-white/80 backdrop-blur-sm">
+            <CardHeader className="pb-4">
+            <div className="flex items-center justify-between">
+                <CardTitle className="text-lg font-semibold text-slate-800 flex items-center space-x-2">
+                  <CheckCircle className="h-5 w-5 text-green-500" />
+                  <span>Enhanced Academic Writing</span>
+                </CardTitle>
+                <div className="flex space-x-2">
+                      <Button 
+                    onClick={handleCopy}
+                        variant="outline" 
+                        size="sm" 
+                    className="h-9 border-slate-200 hover:bg-slate-50"
+                  >
+                    {copied ? <CheckCircle className="h-4 w-4 text-green-500" /> : <Copy className="h-4 w-4" />}
+                      </Button>
+                      <Button 
+                    onClick={handleDownload}
+                        variant="outline" 
+                        size="sm" 
+                    className="h-9 border-slate-200 hover:bg-slate-50"
+                      >
+                        <Download className="h-4 w-4" />
+                      </Button>
+                    </div>
+            </div>
+              <CardDescription className="text-slate-600">
+                Your text has been enhanced with professional academic language and improved clarity
+              </CardDescription>
+          </CardHeader>
+          <CardContent>
+              <div className="prose prose-sm max-w-none">
+                <MarkdownRenderer content={result} />
+            </div>
+          </CardContent>
+        </Card>
+      )}
+            </div>
     </div>
   );
 };
 
 export default MobileHumanizer;
-
-

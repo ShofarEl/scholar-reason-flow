@@ -32,7 +32,15 @@ export const MobileScribeChat: React.FC = () => {
   const workerTabs = useMemo(() => Object.values(WORKER_CONFIGS), []);
 
   return (
-    <div className="flex flex-col h-screen bg-background">
+    <div 
+      className="flex flex-col h-screen bg-background mobile-container"
+      style={{
+        height: '100dvh',
+        width: '100vw',
+        maxWidth: '100vw',
+        touchAction: 'pan-y'
+      }}
+    >
       {/* Top App Bar */}
       <div
         className="flex items-center justify-between px-4 py-3 border-b bg-card/95 backdrop-blur-sm sticky top-0 z-40"
@@ -75,7 +83,14 @@ export const MobileScribeChat: React.FC = () => {
       </div>
 
       {/* Upload shortcut */}
-      <div className="border-b bg-card px-3 py-2">
+      <div 
+        className="border-b bg-card px-3 py-2"
+        style={{
+          touchAction: 'manipulation',
+          userSelect: 'none',
+          WebkitUserSelect: 'none'
+        }}
+      >
         <div className="flex items-center gap-2">
           <div className="ml-auto">
             <Button variant="outline" size="sm" onClick={() => fileInputRef.current?.click()} className="inline-flex items-center">
