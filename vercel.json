@@ -11,56 +11,28 @@
       "destination": "/api/$1"
     },
     {
-      "source": "/auth",
+      "source": "/(.*)",
       "destination": "/index.html"
+    }
+  ],
+  "headers": [
+    {
+      "source": "/assets/(.*)",
+      "headers": [
+        {
+          "key": "Cache-Control",
+          "value": "public, max-age=31536000, immutable"
+        }
+      ]
     },
     {
-      "source": "/humanizer",
-      "destination": "/index.html"
-    },
-    {
-      "source": "/subscription",
-      "destination": "/index.html"
-    },
-    {
-      "source": "/payment-success",
-      "destination": "/index.html"
-    },
-    {
-      "source": "/reset-password",
-      "destination": "/index.html"
-    },
-    {
-      "source": "/not-found",
-      "destination": "/index.html"
-    },
-    {
-      "source": "/debug",
-      "destination": "/index.html"
-    },
-    {
-      "source": "/database-test",
-      "destination": "/index.html"
-    },
-    {
-      "source": "/quick-test",
-      "destination": "/index.html"
-    },
-    {
-      "source": "/admin",
-      "destination": "/index.html"
-    },
-    {
-      "source": "/admin-test",
-      "destination": "/index.html"
-    },
-    {
-      "source": "/admin-debug",
-      "destination": "/index.html"
-    },
-    {
-      "source": "/admin-simple",
-      "destination": "/index.html"
+      "source": "/(.*\\.(js|css|png|jpg|jpeg|gif|svg|ico|woff|woff2|ttf|eot))",
+      "headers": [
+        {
+          "key": "Cache-Control",
+          "value": "public, max-age=31536000, immutable"
+        }
+      ]
     }
   ]
 }

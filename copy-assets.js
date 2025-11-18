@@ -7,9 +7,6 @@ import { fileURLToPath } from 'url';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-// Check if we're in Vercel environment
-const isVercel = process.env.VERCEL === '1';
-
 // Determine the correct paths based on environment
 const distDir = path.join(__dirname, 'dist');
 const publicDir = path.join(__dirname, 'public');
@@ -25,6 +22,27 @@ if (!fs.existsSync(distDir)) {
   fs.mkdirSync(distDir, { recursive: true });
 }
 
+function copyRecursive(src, dest) {
+  const stats = fs.statSync(src);
+  
+  if (stats.isDirectory()) {
+    if (!fs.existsSync(dest)) {
+      fs.mkdirSync(dest, { recursive: true });
+    }
+    const files = fs.readdirSync(src);
+    files.forEach(file => {
+      copyRecursive(path.join(src, file), path.join(dest, file));
+    });
+  } else {
+    const destDir = path.dirname(dest);
+    if (!fs.existsSync(destDir)) {
+      fs.mkdirSync(destDir, { recursive: true });
+    }
+    fs.copyFileSync(src, dest);
+    console.log(`✅ Copied: ${path.relative(__dirname, src)}`);
+  }
+}
+
 try {
   // Copy all files from public to dist
   const files = fs.readdirSync(publicDir);
@@ -32,17 +50,7 @@ try {
   files.forEach(file => {
     const srcPath = path.join(publicDir, file);
     const destPath = path.join(distDir, file);
-    
-    if (fs.statSync(srcPath).isFile()) {
-      // Ensure destination directory exists
-      const destDir = path.dirname(destPath);
-      if (!fs.existsSync(destDir)) {
-        fs.mkdirSync(destDir, { recursive: true });
-      }
-      
-      fs.copyFileSync(srcPath, destPath);
-      console.log(`✅ Copied: ${file}`);
-    }
+    copyRecursive(srcPath, destPath);
   });
 
   console.log('✅ All public assets copied to dist directory');
